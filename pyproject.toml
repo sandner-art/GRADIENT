@@ -13,20 +13,36 @@ packages = [
     { include = "gradient", from = "src" },
 ]
 
+# --- Define PyTorch CUDA 12.1 Source --- vvv
+[[tool.poetry.source]]
+name = "pytorch_cu121"
+url = "https://download.pytorch.org/whl/cu121"
+priority = "explicit"
+# --- Define PyTorch CUDA 12.1 Source --- ^^^
+
 [tool.poetry.dependencies]
-python = "^3.11" # Specify Python version compatibility
+python = "^3.11"
 fastapi = "^0.111.0"
-uvicorn = {extras = ["standard"], version = "^0.30.0"} # Includes websockets, http-tools, etc.
+uvicorn = {extras = ["standard"], version = "^0.30.0"}
 pydantic = "^2.7.0"
 PyYAML = "^6.0"
 python-dotenv = "^1.0.0"
-# Core AI libraries will be added in later phases (diffusers, llama-cpp-python, torch, etc.)
-# Add database dependencies later if needed (e.g., SQLAlchemy, LanceDB)
+
+# --- Add AI Core Libraries --- vvv
+torch = { version = "~2.5.0", source = "pytorch_cu121" } # Allows >=2.5.0, <2.6.0 from cu121 source
+torchvision = { version = "~0.20.0", source = "pytorch_cu121" } # Allows >=0.20.0, <0.21.0 from cu121 source
+torchaudio = { version = "~2.5.0", source = "pytorch_cu121" } # Allows >=2.5.0, <2.6.0 from cu121 source
+diffusers = "^0.29.0"
+transformers = "^4.41.0" # Diffusers often depends on this
+accelerate = "^0.31.0" # Often helpful for diffusers performance/memory
+llama-cpp-python = "^0.2.79" # Check for latest compatible version
+# --- Add AI Core Libraries --- ^^^
+
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
-ruff = "^0.5.0" # Linter and formatter
-httpx = "^0.27.0" # Async HTTP client for testing FastAPI
+ruff = "^0.5.0"
+httpx = "^0.27.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

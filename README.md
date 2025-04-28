@@ -69,6 +69,21 @@ pip install -r requirements.txt
 
 *(Detailed dependency installation, especially for CUDA and llama.cpp, may require additional system-specific steps.)*
 
+## Hardware-Specific PyTorch Builds
+
+GRADIENT is configured by default to install PyTorch with CUDA 12.1 support, suitable for NVIDIA GPUs like the RTX 30x0/40x0 series and newer cards supporting CUDA 12.x.
+
+If you have **different hardware**, you will need to manually install the correct PyTorch build *after* running `poetry install`:
+
+1.  **Activate the virtual environment:** `source venv/bin/activate` (or `.\venv\Scripts\activate` on Windows).
+2.  **Uninstall the default torch:** `pip uninstall torch torchvision torchaudio -y`
+3.  **Find your build:** Go to the [PyTorch Get Started page](https://pytorch.org/get-started/locally/).
+4.  **Select your OS, 'Pip', and your Compute Platform** (e.g., CUDA 11.8, ROCm for AMD, CPU Only, MPS for Apple Silicon).
+5.  **Copy the generated `pip install` command.**
+6.  **Run the command** in your activated venv.
+
+This will replace the default CUDA 12.1 build with the one appropriate for your system. Note that your `poetry.lock` file will still reference the default source, but the manually installed version will take precedence in your environment.
+
 ## Quick Start
 
 ```bash
