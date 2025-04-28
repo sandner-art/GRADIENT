@@ -1,54 +1,60 @@
 # gradient-project-root/config/logging_config.yaml
+# Version 3 - Let Uvicorn handle its own access log format
+
 version: 1
 disable_existing_loggers: false
 
 formatters:
+  # Only define the default formatter now
   default:
     format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     datefmt: '%Y-%m-%d %H:%M:%S'
-  access:
-      format: '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
-      datefmt: '%Y-%m-%d %H:%M:%S'
-
 
 handlers:
+  # Handler for general logs to the console
   console:
     class: logging.StreamHandler
     formatter: default
-    level: INFO # Console level can be different
+    level: INFO
     stream: ext://sys.stdout
+
+  # Handler for general logs to a rotating file
   file:
     class: logging.handlers.RotatingFileHandler
-    formatter: default
-    level: DEBUG # File level can be more verbose
-    filename: logs/gradient.log # Log file path relative to root
-    maxBytes: 10485760 # 10MB
+    formatter: default # Use the default format for file logs
+    level: DEBUG
+    filename: logs/gradient.log
+    maxBytes: 10485760
     backupCount: 5
     encoding: utf8
-  # Access log handler for uvicorn/fastapi
-  access_console:
-      class: logging.StreamHandler
-      formatter: access
-      stream: ext://sys.stdout
+
+  # --- Removed access_console handler ---
 
 loggers:
-  gradient: # Logger for your application code
+  # Logger for *your* application code (src/gradient/...)
+  gradient:
     handlers: [console, file]
-    level: DEBUG # Capture all levels from DEBUG upwards in app code
+    level: DEBUG
     propagate: no
+
+  # Logger for general Uvicorn messages (startup, shutdown, errors)
+  # We send these to our standard handlers
   uvicorn:
     handlers: [console, file]
     level: INFO
-    propagate: yes
+    propagate: no # Prevent propagation to root for these messages
   uvicorn.error:
+    handlers: [console, file]
     level: INFO
-    propagate: yes
+    propagate: no # Prevent propagation to root
+
+  # Logger specifically for Uvicorn access logs (HTTP requests)
   uvicorn.access:
-      handlers: [access_console, file] # Use specific access handler
+      handlers: [] # <-- REMOVE custom handlers here
       level: INFO
-      propagate: no
+      propagate: no # <-- Keep this as False
 
-
-root: # Root logger configuration
+# Root logger
+root:
   handlers: [console, file]
-  level: WARNING # Catch warnings/errors from libraries not explicitly configured
+  level: WARNING
