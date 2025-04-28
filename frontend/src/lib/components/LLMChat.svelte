@@ -136,37 +136,43 @@
                      // Process SSE messages (data: {...}\n\n)
                      const lines = value.split('\n');
                      for (const line of lines) {
-                         if (line.startsWith('data: ')) {
+                        if (line.startsWith('data: ')) {
                             const jsonData = line.substring(6).trim();
                             if (jsonData) {
                                 try {
-                                    const chunk = JSON.parse(jsonData);
-                                    // Handle potential error message embedded in stream
-                                    if (chunk.error) {
-                                        throw new Error(`Stream Error: ${chunk.error}`);
+                                    // --- Add check for potential special end signal ---
+                                    if (jsonData === "[DONE]") { // Example end signal, if backend sends one
+                                        console.log("Received stream end signal.");
+                                        break; // Exit inner loop if backend sends specific end marker
                                     }
-                                    // Extract delta content
+
+                                    const chunk = JSON.parse(jsonData); // Attempt parsing
+
+                                    if (chunk.error) { // Check for explicit errors sent by backend
+                                        throw new Error(`Stream Error from backend: ${chunk.error}`);
+                                    }
+
                                     const deltaContent = chunk?.choices?.[0]?.delta?.content;
-                                    if (deltaContent) {
+                                    if (deltaContent !== undefined && deltaContent !== null) { // Check exists, even if empty string
                                         if (!messageAdded) {
-                                            // Add the assistant message container the first time we get content
                                             addMessage(assistantMessage);
                                             messageAdded = true;
                                         }
-                                        // Append content and update the messages array reactively
                                         assistantMessage.content += deltaContent;
-                                        messages = messages; // Trigger Svelte reactivity
-                                        await tick(); // Wait for DOM update for scrolling
+                                        messages = messages; // Trigger reactivity
+                                        await tick();
                                         if (chatContainerElement) {
                                             chatContainerElement.scrollTop = chatContainerElement.scrollHeight;
                                         }
                                     }
-                                } catch (parseError) {
-                                    console.error("Failed to parse stream chunk:", parseError, "Chunk:", jsonData);
-                                    error = "Failed to process stream response chunk.";
+                                } catch (parseError: unknown) { // Catch specifically JSON parse errors
+                                    // Log more informatively and SKIP this chunk
+                                    console.error("Failed to parse stream chunk JSON:", parseError, "Skipped Chunk Data:", jsonData);
+                                    // Optionally display a subtle indicator in the UI that a chunk was skipped?
+                                    // error = "Failed to process some stream response chunks."; // Maybe too intrusive
                                 }
                             }
-                         }
+                        }
                      }
                  }
                  console.log("Stream finished.");
@@ -265,7 +271,7 @@
             {:else if message.role === 'assistant'}
                  <div class="flex justify-start">
                     <div class="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 p-3 rounded-lg max-w-xs lg:max-w-md shadow whitespace-pre-wrap">
-                        {message.content || '...'} <!----> Show ellipsis if content empty (during stream start) -->
+                        {message.content || '...'}
                     </div>
                 </div>
              {:else} <!-- System message? -->
