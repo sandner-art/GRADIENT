@@ -5,7 +5,8 @@ import logging
 
 # Import routers
 from .endpoints import status as status_endpoints
-from .endpoints import generate as generate_endpoints # <-- IMPORT NEW ROUTER
+from .endpoints import generate as generate_endpoints
+from .endpoints import llm as llm_endpoints # <-- IMPORT NEW ROUTER
 from . import websocket as websocket_endpoints
 
 app = FastAPI(
@@ -16,7 +17,8 @@ app = FastAPI(
 
 # --- Routers ---
 app.include_router(status_endpoints.router, prefix="/api/v1", tags=["Status"])
-app.include_router(generate_endpoints.router, prefix="/api/v1", tags=["Generation"]) # <-- REGISTER NEW ROUTER
+app.include_router(generate_endpoints.router, prefix="/api/v1", tags=["Generation"])
+app.include_router(llm_endpoints.router, prefix="/api/v1", tags=["LLM"]) # <-- REGISTER NEW ROUTER
 app.include_router(websocket_endpoints.router) # Websocket usually at root path /ws
 
 # --- Root Endpoint ---
