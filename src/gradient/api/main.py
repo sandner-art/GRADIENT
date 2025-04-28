@@ -6,7 +6,8 @@ import logging
 # Import routers
 from .endpoints import status as status_endpoints
 from .endpoints import generate as generate_endpoints
-from .endpoints import llm as llm_endpoints # <-- IMPORT NEW ROUTER
+from .endpoints import llm as llm_endpoints
+from .endpoints import visualize as visualize_endpoints # <-- IMPORT NEW ROUTER
 from . import websocket as websocket_endpoints
 
 app = FastAPI(
@@ -18,8 +19,9 @@ app = FastAPI(
 # --- Routers ---
 app.include_router(status_endpoints.router, prefix="/api/v1", tags=["Status"])
 app.include_router(generate_endpoints.router, prefix="/api/v1", tags=["Generation"])
-app.include_router(llm_endpoints.router, prefix="/api/v1", tags=["LLM"]) # <-- REGISTER NEW ROUTER
-app.include_router(websocket_endpoints.router) # Websocket usually at root path /ws
+app.include_router(llm_endpoints.router, prefix="/api/v1", tags=["LLM"])
+app.include_router(visualize_endpoints.router, prefix="/api/v1", tags=["Visualization"]) # <-- REGISTER NEW ROUTER
+app.include_router(websocket_endpoints.router)
 
 # --- Root Endpoint ---
 @app.get("/", tags=["Root"], include_in_schema=False) # Hide basic root from OpenAPI

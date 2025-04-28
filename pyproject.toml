@@ -37,6 +37,9 @@ transformers = "^4.41.0" # Diffusers often depends on this
 accelerate = "^0.31.0" # Often helpful for diffusers performance/memory
 llama-cpp-python = "^0.2.79" # Check for latest compatible version
 # --- Add AI Core Libraries --- ^^^
+umap-learn = "^0.5.7"
+numpy = "^2.2.5"
+scikit-learn = "^1.6.1"
 
 
 [tool.poetry.group.dev.dependencies]
