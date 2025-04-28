@@ -17,6 +17,13 @@ class DiffusionTaskBase(BaseModel):
     # Add VAE later
     # vae_id: Optional[str] = None
 
+    # --- NEW: Custom Noise Schedule --- vvv
+    custom_sigmas: Optional[List[float]] = Field(
+        default=None,
+        description="Optional list of sigma values for a custom noise schedule. If provided, num_inference_steps might be ignored or validated against list length."
+    )
+    # --- NEW: Custom Noise Schedule --- ^^^
+
 class ImageResult(BaseModel):
     """Represents a single generated image result."""
     image_base64: str
