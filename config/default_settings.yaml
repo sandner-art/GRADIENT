@@ -1,0 +1,8 @@
+# gradient-project-root/config/default_settings.yaml
+app:
+  host: "127.0.0.1"
+  port: 8000
+  reload: false # <--- ADD THIS LINE
+
+logging:
+  level: "INFO"

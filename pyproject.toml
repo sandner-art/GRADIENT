@@ -1,0 +1,55 @@
+# gradient-project-root/pyproject.toml
+
+[tool.poetry]
+name = "gradient-workbench"
+version = "0.1.0"
+description = "GRADIENT: Generative Research & Architectural Diffusion Interactive Exploration Navigation Toolkit"
+authors = ["Daniel Sandner <news@sandner.art>"] # Replace with actual email
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/sandner-art/gradient" # Replace with actual repo URL
+documentation = "https://github.com/sandner-art/gradient/wiki" # Replace if docs hosted elsewhere
+packages = [
+    { include = "gradient", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.11" # Specify Python version compatibility
+fastapi = "^0.111.0"
+uvicorn = {extras = ["standard"], version = "^0.30.0"} # Includes websockets, http-tools, etc.
+pydantic = "^2.7.0"
+PyYAML = "^6.0"
+python-dotenv = "^1.0.0"
+# Core AI libraries will be added in later phases (diffusers, llama-cpp-python, torch, etc.)
+# Add database dependencies later if needed (e.g., SQLAlchemy, LanceDB)
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+ruff = "^0.5.0" # Linter and formatter
+httpx = "^0.27.0" # Async HTTP client for testing FastAPI
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# Tool Configurations
+[tool.ruff]
+line-length = 88
+select = ["E", "W", "F", "I", "UP", "B", "C4", "ASYNC"] # Select rules (Error, Warning, Pyflakes, isort, pyupgrade, flake8-bugbear, flake8-comprehensions, flake8-async)
+ignore = ["E501"] # Ignore line length errors (handled by formatter)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+pythonpath = ["src"] # Add src to PYTHONPATH for tests
+
+# Optional: Define scripts if needed (e.g., for CLI)
+# [tool.poetry.scripts]
+# gradient = "gradient.__main__:app" # Example if using Typer/Click in __main__.py

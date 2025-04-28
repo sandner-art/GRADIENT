@@ -1,0 +1,54 @@
+# gradient-project-root/config/logging_config.yaml
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  default:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  access:
+      format: '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
+      datefmt: '%Y-%m-%d %H:%M:%S'
+
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: default
+    level: INFO # Console level can be different
+    stream: ext://sys.stdout
+  file:
+    class: logging.handlers.RotatingFileHandler
+    formatter: default
+    level: DEBUG # File level can be more verbose
+    filename: logs/gradient.log # Log file path relative to root
+    maxBytes: 10485760 # 10MB
+    backupCount: 5
+    encoding: utf8
+  # Access log handler for uvicorn/fastapi
+  access_console:
+      class: logging.StreamHandler
+      formatter: access
+      stream: ext://sys.stdout
+
+loggers:
+  gradient: # Logger for your application code
+    handlers: [console, file]
+    level: DEBUG # Capture all levels from DEBUG upwards in app code
+    propagate: no
+  uvicorn:
+    handlers: [console, file]
+    level: INFO
+    propagate: yes
+  uvicorn.error:
+    level: INFO
+    propagate: yes
+  uvicorn.access:
+      handlers: [access_console, file] # Use specific access handler
+      level: INFO
+      propagate: no
+
+
+root: # Root logger configuration
+  handlers: [console, file]
+  level: WARNING # Catch warnings/errors from libraries not explicitly configured
