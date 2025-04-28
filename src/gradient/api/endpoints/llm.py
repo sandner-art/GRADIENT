@@ -14,7 +14,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post(
-    "/llm/chat/completions",
+    "/chat/completions",
     # Define response model based on stream parameter later, or use Union
     # For now, specify non-streaming response, handle stream separately
     response_model=ChatCompletionResponse,
