@@ -40,6 +40,10 @@ llama-cpp-python = "^0.2.79" # Check for latest compatible version
 umap-learn = "^0.5.7"
 numpy = "^2.2.5"
 scikit-learn = "^1.6.1"
+sqlalchemy = "^2.0.40"
+alembic = "^1.15.2"
+greenlet = "^3.2.1"
+aiosqlite = "^0.21.0"
 
 
 [tool.poetry.group.dev.dependencies]
