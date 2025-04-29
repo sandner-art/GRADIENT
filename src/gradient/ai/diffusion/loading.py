@@ -2,214 +2,200 @@
 
 import logging
 import torch
-from torch import dtype # Ensure dtype is imported
-from diffusers import DiffusionPipeline, AutoencoderKL, StableDiffusionPipeline # Add more pipeline types later as needed
+from torch import dtype
+from diffusers import DiffusionPipeline, AutoencoderKL, StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 from pathlib import Path
-from typing import Optional, Dict, Any # Ensure Optional, Dict, Any are imported
+from typing import Optional, Dict, Any, List
 
-# Assuming resource_manager is accessible, e.g., imported from core
-# Adjust import path as necessary based on your structure if core isn't directly importable
-# This might involve setting up __init__.py properly or using relative imports if kept within ai module.
-# For now, let's assume direct import works via PYTHONPATH setup in pyproject.toml
 from gradient.core.resource_manager import resource_manager
+from gradient.core.config import get_setting, PROJECT_ROOT # Import config helpers
 
 logger = logging.getLogger(__name__)
 
-# Cache for loaded models/pipelines to avoid redundant loading
-# key = unique identifier (e.g., model_path_or_id:variant:dtype:device), value = loaded pipeline/component object
+# Cache
 loaded_pipelines: Dict[str, Any] = {}
-loaded_components: Dict[str, Any] = {} # For VAEs, etc.
+loaded_components: Dict[str, Any] = {}
 
-# --- Model Path Functions (Placeholder) ---
-# TODO: Replace with actual config access later
-def get_model_base_path() -> Path:
-    """Gets the base path for diffusers models."""
-    # from gradient.core.config import get_setting
-    # return Path(get_setting("paths.models.diffusers", "./data/models/diffusers"))
-    return Path("./data/models/diffusers") # Default for now
+# --- Path Helper Functions (SHOULD ONLY BE THESE NOW) ---
 
-def get_checkpoint_base_path() -> Path:
-    """Gets the base path for checkpoint models."""
-    # from gradient.core.config import get_setting
-    # return Path(get_setting("paths.models.checkpoints", "./data/models/checkpoints"))
-    return Path("./data/models/checkpoints") # Default for now
+def get_model_search_dirs() -> List[Path]:
+    """Gets the configured list of base directories to search for models."""
+    search_dirs_config = get_setting("paths.models.search_dirs", ["./data/models"])
+    resolved_dirs = []
+    for dir_str in search_dirs_config:
+        path = Path(dir_str)
+        if not path.is_absolute():
+            path = (PROJECT_ROOT / path).resolve()
+        resolved_dirs.append(path)
+    # logger.debug(f"Resolved model search directories: {resolved_dirs}") # Keep debug if useful
+    return resolved_dirs
 
-def get_vae_base_path() -> Path:
-    """Gets the base path for VAE models."""
-    # from gradient.core.config import get_setting
-    # return Path(get_setting("paths.models.vae", "./data/models/vae"))
-    return Path("./data/models/vae") # Default for now
+def find_model_path(model_id_or_partial_path: str, model_type: str) -> Optional[Path]:
+    """
+    Searches for a model/checkpoint/VAE file or directory within configured search paths.
+    Handles relative paths within subdirs (diffusers, checkpoints, vae) and absolute paths.
+    """
+    input_path = Path(model_id_or_partial_path)
 
-# --- Model Loading Functions ---
+    if input_path.is_absolute():
+        if input_path.exists():
+            # logger.debug(f"Found existing absolute path for '{model_id_or_partial_path}'.")
+            return input_path.resolve()
+        else:
+            logger.warning(f"Provided absolute path '{model_id_or_partial_path}' does not exist.")
+            return None
+
+    search_dirs = get_model_search_dirs()
+    subdir_name = get_setting(f"paths.models.{model_type}", model_type)
+
+    for base_dir in search_dirs:
+        potential_path = (base_dir / subdir_name / model_id_or_partial_path).resolve()
+        if potential_path.exists():
+            logger.debug(f"Found '{model_id_or_partial_path}' of type '{model_type}' at '{potential_path}'")
+            return potential_path
+
+    # logger.debug(f"Model '{model_id_or_partial_path}' of type '{model_type}' not found locally.") # Keep debug if useful
+    return None
+
+# --- Model Loading Function ---
 
 async def load_diffusion_pipeline(
     model_path_or_id: str,
-    pipeline_type: str = "StableDiffusionPipeline", # e.g., StableDiffusionPipeline, StableDiffusionXLPipeline
-    vae_id: Optional[str] = None, # Allow specifying a VAE
+    pipeline_type: str = "StableDiffusionPipeline",
+    vae_id: Optional[str] = None,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    dtype: dtype = torch.float16 if torch.cuda.is_available() else torch.float32, # Use float16 on GPU default
+    dtype: dtype = torch.float16 if torch.cuda.is_available() else torch.float32,
     use_safetensors: bool = True,
-    variant: Optional[str] = "fp16" if torch.float16 == dtype else None,
+    variant: Optional[str] = "fp16" if torch.cuda.is_available() and dtype == torch.float16 else None,
     force_reload: bool = False
 ) -> Optional[DiffusionPipeline]:
     """
-    Loads a diffusion pipeline (e.g., Stable Diffusion) using diffusers.
-    Handles diffusers format, single checkpoints, VAE loading, caching, and VRAM allocation.
+    Loads a diffusion pipeline. Handles local paths (searching configured dirs),
+    absolute paths, HF Hub IDs, VAE loading, caching, and basic resource management.
     """
-    # Include VAE in the key if specified
+    # --- Key Generation (using dtype name) ---
     vae_key_part = f":vae={vae_id}" if vae_id else ""
-    pipeline_key = f"{pipeline_type}:{model_path_or_id}:{variant}:{dtype}:{device}{vae_key_part}"
+    try:
+        # Attempt to get a clean string representation like 'float16' or 'bfloat16'
+        dtype_str = str(dtype).split('.')[-1]
+    except Exception:
+        dtype_str = 'unknown_dtype' # Fallback
+    pipeline_key = f"{pipeline_type}:{model_path_or_id}:{variant}:{dtype_str}:{device}{vae_key_part}"
 
+
+    # --- Cache Check ---
     if not force_reload and pipeline_key in loaded_pipelines:
         logger.info(f"Returning cached pipeline: {pipeline_key}")
         resource_manager.update_usage(pipeline_key)
         return loaded_pipelines[pipeline_key]
 
-    model_load_path: Path | str
-    load_from_single_file = False # Flag to know if we are loading a checkpoint
+    # --- Resolve Paths using find_model_path ---
+    model_load_path_str: str = ""
+    load_from_single_file = False
 
-    # --- Determine actual path for main model/pipeline ---
-    potential_path_diffusers = get_model_base_path() / model_path_or_id
-    potential_path_ckpt = get_checkpoint_base_path() / model_path_or_id
+    resolved_diffusers_path = find_model_path(model_path_or_id, "diffusers")
+    resolved_ckpt_path = find_model_path(model_path_or_id, "checkpoints")
 
-    if potential_path_diffusers.is_dir():
-        model_load_path = potential_path_diffusers
-        logger.info(f"Loading local diffusers model from: {model_load_path}")
-    elif potential_path_ckpt.is_file() or Path(model_path_or_id).is_file():
-        model_load_path = potential_path_ckpt if potential_path_ckpt.is_file() else Path(model_path_or_id)
-        logger.info(f"Identified single checkpoint file: {model_load_path}")
-        load_from_single_file = True # Set the flag
+    if resolved_diffusers_path and resolved_diffusers_path.is_dir():
+        model_load_path_str = str(resolved_diffusers_path)
+        logger.info(f"Loading local diffusers model from: {model_load_path_str}")
+    elif resolved_ckpt_path and resolved_ckpt_path.is_file():
+        model_load_path_str = str(resolved_ckpt_path)
+        logger.info(f"Identified single checkpoint file: {model_load_path_str}")
+        load_from_single_file = True
     else:
-        # Assume it's a Hugging Face Hub model ID
-        model_load_path = model_path_or_id
-        logger.info(f"Assuming Hugging Face Hub ID: {model_load_path}")
+        model_load_path_str = model_path_or_id
+        if Path(model_path_or_id).is_absolute():
+             logger.warning(f"Absolute path specified but not found: '{model_path_or_id}'. Passing to diffusers.")
+        else:
+             logger.info(f"Assuming Hugging Face Hub ID or incorrect local path: {model_load_path_str}")
 
-    # Convert Path object to string for diffusers functions
-    model_load_path_str = str(model_load_path)
-
-    # --- Load Optional VAE ---
+    # --- Load VAE using find_model_path ---
     vae = None
-    vae_load_path_str = None
     if vae_id:
-        potential_vae_path_local = get_vae_base_path() / vae_id
-        if potential_vae_path_local.is_file() or Path(vae_id).is_file():
-            vae_load_path = potential_vae_path_local if potential_vae_path_local.is_file() else Path(vae_id)
-            vae_load_path_str = str(vae_load_path)
+        resolved_vae_path = find_model_path(vae_id, "vae")
+        if resolved_vae_path and (resolved_vae_path.is_file() or resolved_vae_path.is_dir()):
+            vae_load_path_str = str(resolved_vae_path)
             logger.info(f"Attempting to load specified VAE from local path: {vae_load_path_str}")
         else:
-             vae_load_path_str = vae_id # Assume HF Hub ID for VAE
-             logger.info(f"Attempting to load specified VAE from Hub ID: {vae_load_path_str}")
-
+             vae_load_path_str = vae_id
+             logger.info(f"Assuming Hub ID or incorrect local path for VAE: {vae_load_path_str}")
         try:
-            # TODO: Add VAE caching and resource management if needed separately
             vae = AutoencoderKL.from_pretrained(
-                vae_load_path_str,
-                torch_dtype=dtype, # Load VAE in same dtype? Or specific (e.g., float32)? Often float16 is fine.
-                # variant=variant # Does VAE have fp16 variant? Check docs if needed
-            )
-            vae.to(device) # Move VAE to target device
+                vae_load_path_str, torch_dtype=dtype
+            ).to(device)
             logger.info(f"Successfully loaded VAE: {vae_id}")
         except Exception as e:
             logger.error(f"Failed to load specified VAE '{vae_id}': {e}", exc_info=True)
-            # Decide whether to proceed without VAE or fail entirely
-            # For now, let's fail if specific VAE load fails
             return None
 
-
-    # --- VRAM Estimation & Allocation (Placeholder) ---
-    # TODO: Implement more accurate VRAM estimation based on model config/size/VAE
-    estimated_vram_mb = 4 * 1024 + (1 * 1024 if vae else 0) # Dummy: 4GB base + 1GB for VAE
+    # --- VRAM Allocation ---
+    estimated_vram_mb = 4 * 1024 + (1 * 1024 if vae else 0) # Dummy
     component_type = f"pipeline_{pipeline_type}"
-
     try:
         await resource_manager.allocate(pipeline_key, estimated_vram_mb, component_type)
     except MemoryError as e:
         logger.error(f"Failed to allocate VRAM for {pipeline_key}: {e}")
-        # If VAE was loaded, unload it? Need proper resource tracking for components too.
-        del vae # Basic cleanup
+        del vae
         if torch.cuda.is_available(): torch.cuda.empty_cache()
         return None
 
-    # --- Load the Main Pipeline ---
+    # --- Load Main Pipeline ---
     pipeline = None
     try:
-        load_args = {
-            "torch_dtype": dtype,
-            # Pass loaded VAE if available
-            **({"vae": vae} if vae else {}),
-        }
-        if variant:
-            load_args["variant"] = variant
+        load_args = {"torch_dtype": dtype, **({"vae": vae} if vae else {})}
+        if variant: load_args["variant"] = variant
 
-        # Dynamically get the pipeline class
         try:
             diffusers_module = __import__('diffusers', fromlist=[pipeline_type])
             pipeline_class = getattr(diffusers_module, pipeline_type)
         except (ImportError, AttributeError) as import_err:
              logger.error(f"Could not find pipeline class '{pipeline_type}' in diffusers: {import_err}")
-             await resource_manager.release(pipeline_key)
-             return None
+             await resource_manager.release(pipeline_key); del vae; return None # Added cleanup
 
         logger.info(f"Loading {pipeline_type} '{model_load_path_str}' with args: {load_args}")
 
-        # Use from_single_file for checkpoints if available and appropriate
         if load_from_single_file and hasattr(pipeline_class, 'from_single_file'):
              logger.info(f"Using {pipeline_type}.from_single_file for checkpoint.")
-             # from_single_file often takes similar args, but check specific pipeline docs
-             # It usually infers safetensors based on extension
              pipeline = pipeline_class.from_single_file(model_load_path_str, **load_args)
         else:
-             # Use standard from_pretrained for directories or Hub IDs
-             load_args["use_safetensors"] = use_safetensors # Add back for from_pretrained
+             # Add use_safetensors back for from_pretrained if desired, though often default True
+             load_args["use_safetensors"] = use_safetensors
              pipeline = pipeline_class.from_pretrained(model_load_path_str, **load_args)
 
-        # Move final pipeline to device (VAE should already be there if loaded)
         pipeline.to(device)
 
-        # Optional: Disable safety checker if desired
         if hasattr(pipeline, "safety_checker") and pipeline.safety_checker is not None:
             logger.warning("Disabling pipeline safety checker.")
-            pipeline.safety_checker = None
-            # Also potentially remove requires_safety_checker attribute if needed by some pipelines
-            # pipeline.requires_safety_checker = False
-
+            pipeline.safety_checker = None # Standard way
 
         logger.info(f"Successfully loaded pipeline: {pipeline_key}")
         loaded_pipelines[pipeline_key] = pipeline
-        # Update resource manager timestamp after successful load
         resource_manager.update_usage(pipeline_key)
         return pipeline
 
     except Exception as e:
-        logger.error(f"Error loading diffusion pipeline {pipeline_key}: {e}", exc_info=True)
-        # Release allocated VRAM if loading failed
+        logger.error(f"Error loading diffusion pipeline {pipeline_key} from '{model_load_path_str}': {e}", exc_info=True)
         await resource_manager.release(pipeline_key)
-        # Cleanup loaded VAE if main pipeline load failed
         del vae
         if torch.cuda.is_available(): torch.cuda.empty_cache()
         return None
 
+# --- Unload Function (Ensure it matches previous version) ---
 async def unload_pipeline(pipeline_key: str):
-    """Unloads a specific pipeline from memory and cache."""
+    # ... (Keep the implementation from before) ...
     if pipeline_key in loaded_pipelines:
         logger.info(f"Unloading pipeline: {pipeline_key}")
-        # Release VRAM first (manager keeps track of amount)
-        await resource_manager.release(pipeline_key)
+        await resource_manager.release(pipeline_key) # Release VRAM tracking first
         pipeline = loaded_pipelines.pop(pipeline_key)
-        # Explicitly delete components if possible, especially the VAE if tracked separately
-        if hasattr(pipeline, 'vae'): del pipeline.vae
-        if hasattr(pipeline, 'unet'): del pipeline.unet
-        # ... etc for other large components
-        del pipeline
+        # Attempt to delete known large components
+        if hasattr(pipeline, 'vae') and pipeline.vae is not None: del pipeline.vae
+        if hasattr(pipeline, 'unet') and pipeline.unet is not None: del pipeline.unet
+        if hasattr(pipeline, 'text_encoder') and pipeline.text_encoder is not None: del pipeline.text_encoder
+        if hasattr(pipeline, 'text_encoder_2') and pipeline.text_encoder_2 is not None: del pipeline.text_encoder_2
+        del pipeline # Delete the main object
         if torch.cuda.is_available():
-            torch.cuda.empty_cache() # Clear GPU cache
+            torch.cuda.empty_cache() # Attempt to clear GPU cache
         logger.info(f"Pipeline {pipeline_key} unloaded.")
     else:
         logger.warning(f"Attempted to unload non-cached pipeline: {pipeline_key}")
-
-# --- TODO: Add functions for loading specific components like ControlNets, LoRAs ---
-# async def load_lora(...)
-
-# --- Coordination with ResourceManager ---
-# TODO: Implement proper unload callback registration with ResourceManager
-# Example: resource_manager.register_unload_handler("pipeline_", unload_pipeline)

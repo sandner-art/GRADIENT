@@ -1,4 +1,4 @@
-// frontend/src/lib/types.ts (NEW or Append)
+// frontend/src/lib/types.ts
 
 // --- From diffusion/models.py ---
 export interface ImageResult {
@@ -7,32 +7,48 @@ export interface ImageResult {
 	parameters: Record<string, any>; // Dictionary for parameters used
 }
 
+export interface DiffusionTaskBase {
+	model_id: string;
+	prompt: string;
+	negative_prompt?: string | null; // Allow null
+	height?: number;
+	width?: number;
+	num_inference_steps?: number;
+	guidance_scale?: number; // Allow float, string or list for scheduled CFG later? For now, number.
+	seed?: number | null;
+	custom_sigmas?: number[] | null;
+	scheduler_id?: string | null; // Added scheduler
+	// vae_id?: string | null; // Add when ready
+}
+
+// --- Text-to-Image Specific --- vvv
+export interface Text2ImageRequest extends DiffusionTaskBase {
+	num_outputs?: number;
+}
+
+export interface Text2ImageResponse {
+	images: ImageResult[];
+	request_params: Text2ImageRequest; // Use the specific request type
+	performance_ms?: number | null;
+}
+// --- Text-to-Image Specific --- ^^^
+
+
 // --- From viz/models.py ---
-// Not strictly needed for grid display, but good to have centrally
+// Add LatentSpaceVizRequest/Response etc. here later if needed
+
 
 // --- From diffusion/models.py (XYZ Grid) ---
 export interface AxisParameter {
-    parameter: string;
-    values: any[]; // Can be string, number etc.
-}
-
-export interface DiffusionTaskBase {
-    model_id: string;
-    prompt: string;
-    negative_prompt?: string;
-    height?: number;
-    width?: number;
-    num_inference_steps?: number;
-    guidance_scale?: number;
-    seed?: number | null;
-    custom_sigmas?: number[] | null;
+	parameter: string;
+	values: any[]; // Can be string, number etc.
 }
 
 export interface XYZGridRequest {
-    base_parameters: DiffusionTaskBase;
-    x_axis?: AxisParameter | null;
-    y_axis?: AxisParameter | null;
-    z_axis?: AxisParameter | null;
+	base_parameters: DiffusionTaskBase; // Uses the base type
+	x_axis?: AxisParameter | null;
+	y_axis?: AxisParameter | null;
+	z_axis?: AxisParameter | null;
 }
 
 export interface XYZGridResult {
@@ -48,5 +64,20 @@ export interface XYZGridResponse {
 	grid_results: XYZGridResult[];
 	request_params: XYZGridRequest;
 }
+
+// --- From diffusion/models.py (Img2Img) --- vvv
+export interface ImageToImageRequest extends DiffusionTaskBase {
+    image_base64: string;
+    strength?: number;
+    num_outputs?: number;
+}
+
+export interface ImageToImageResponse {
+    images: ImageResult[];
+    request_params: ImageToImageRequest;
+    performance_ms?: number | null;
+}
+// --- From diffusion/models.py (Img2Img) --- ^^^
+
 
 // Add other types (LLM, Sensitivity etc.) here as needed

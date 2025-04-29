@@ -6,3 +6,22 @@ app:
 
 logging:
   level: "INFO"
+
+# config of model paths
+
+paths:
+  models:
+    # Define base search directories. Order might matter.
+    # Paths can be relative (to project root) or absolute.
+    search_dirs:
+      - "./data/models" # Default relative path
+      # - "/mnt/extra_storage/ai_models" # Example absolute path on Linux
+      # - "D:/ai_models"                  # Example absolute path on Windows
+    # Specific subdirs within search paths (can keep defaults)
+    diffusers: "diffusers"
+    checkpoints: "checkpoints"
+    vae: "vae"
+    llm: "llm"
+    lora: "lora"
+    controlnet: "controlnet"
+    embeddings: "embeddings"  

@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Union, Any, Dict
 
-# --- Existing Models ---
+# --- Base Model Update ---
 class DiffusionTaskBase(BaseModel):
     """Base model for common diffusion parameters."""
     model_id: str = Field(..., description="Identifier for the base model (path or HF ID)")
@@ -13,17 +13,22 @@ class DiffusionTaskBase(BaseModel):
     width: int = Field(default=512, gt=0)
     num_inference_steps: int = Field(default=25, gt=0)
     guidance_scale: float = Field(default=7.5, ge=0)
-    seed: Optional[int] = None # For grids, this might be a starting seed or ignored if axis uses seed
-    # Add VAE later
-    # vae_id: Optional[str] = None
+    seed: Optional[int] = None
+    # vae_id: Optional[str] = None # Keep commented until fully implemented
 
-    # --- NEW: Custom Noise Schedule --- vvv
     custom_sigmas: Optional[List[float]] = Field(
         default=None,
         description="Optional list of sigma values for a custom noise schedule. If provided, num_inference_steps might be ignored or validated against list length."
     )
-    # --- NEW: Custom Noise Schedule --- ^^^
 
+    # --- NEW: Scheduler Selection --- vvv
+    scheduler_id: Optional[str] = Field(
+        default=None,
+        description="Optional identifier for the scheduler (e.g., 'DDIMScheduler', 'DPMSolverMultistepScheduler'). If None, uses pipeline default."
+    )
+    # --- NEW: Scheduler Selection --- ^^^
+
+# --- Image Result (Unchanged) ---
 class ImageResult(BaseModel):
     """Represents a single generated image result."""
     image_base64: str
@@ -31,49 +36,65 @@ class ImageResult(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Parameters used for this specific image")
     # Add other metadata later (safety status, timings, etc.)
 
-# --- XYZ Grid Specific Models ---
+# --- Text2Image Models (Inherit scheduler_id) ---
+class Text2ImageRequest(DiffusionTaskBase):
+    """Request model for Text-to-Image generation."""
+    num_outputs: int = Field(default=1, gt=0, le=4) # Limit batch size for now
 
+class Text2ImageResponse(BaseModel):
+    """Response model for Text-to-Image generation."""
+    images: List[ImageResult]
+    request_params: Text2ImageRequest # Keep original request type here
+    performance_ms: Optional[float] = None
+
+# --- Img2Img Models --- vvv
+class ImageToImageRequest(DiffusionTaskBase):
+    """Request model for Image-to-Image generation."""
+    image_base64: str = Field(..., description="Base64 encoded initial image")
+    strength: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Strength of the diffusion process. 1.0 means full diffusion (ignore initial image structure), 0.0 means no diffusion (return initial image).",
+    )
+    num_outputs: int = Field(default=1, gt=0, le=4) # Match T2I for consistency
+
+class ImageToImageResponse(BaseModel):
+    """Response model for Image-to-Image generation."""
+    images: List[ImageResult]
+    request_params: ImageToImageRequest
+    performance_ms: Optional[float] = None
+# --- Img2Img Models --- ^^^
+
+
+# --- XYZ Grid Models (Unchanged for now, but base_parameters now includes scheduler_id) ---
 class AxisParameter(BaseModel):
     """Defines which parameter varies along an axis and its values."""
-    parameter: str = Field(..., description="Name of the parameter to vary (e.g., 'seed', 'guidance_scale', 'prompt', 'num_inference_steps')")
+    parameter: str = Field(..., description="Name of the parameter to vary (e.g., 'seed', 'guidance_scale', 'prompt', 'num_inference_steps', 'scheduler_id')") # Added scheduler_id example
     values: List[Any] = Field(..., min_length=1, description="List of values for the parameter along this axis")
 
     @field_validator('parameter')
     def validate_parameter_name(cls, v):
         # TODO: Add validation later to ensure parameter name is valid for DiffusionTaskBase or loaded model
-        # allowed_params = {'seed', 'guidance_scale', 'prompt', 'negative_prompt', 'num_inference_steps', ...}
+        allowed_params = DiffusionTaskBase.model_fields.keys() # Get valid fields dynamically
+        # Also allow img2img specific fields if context allows? Complex.
+        # For now, just check base fields. Grid might need separate validation.
         # if v not in allowed_params:
-        #     raise ValueError(f"Invalid parameter name for XYZ grid axis: {v}")
+        #     raise ValueError(f"Invalid parameter name for XYZ grid axis (check DiffusionTaskBase): {v}")
         return v
 
 class XYZGridRequest(BaseModel):
     """Request model for generating an XYZ grid of images."""
-    # Base parameters that are fixed unless overridden by an axis
-    base_parameters: DiffusionTaskBase
-
-    # Define up to 3 axes
+    base_parameters: DiffusionTaskBase # This now includes scheduler_id by inheritance
     x_axis: Optional[AxisParameter] = None
     y_axis: Optional[AxisParameter] = None
-    z_axis: Optional[AxisParameter] = None # Optional third dimension
+    z_axis: Optional[AxisParameter] = None
 
     @field_validator('x_axis', 'y_axis', 'z_axis')
     def check_axis_parameter_uniqueness(cls, v, info):
-        """Ensure the same parameter isn't used for multiple axes."""
-        # This basic check runs *before* all fields are validated, so it's complex to check across axes here.
-        # A model validator is better suited for cross-field checks.
-        # For now, we rely on later logic to handle potential overlaps gracefully.
-        # A more robust implementation would use model_validator.
-        if v is None:
-            return v
-        if not v.values:
-             raise ValueError("Axis values list cannot be empty")
-        # Basic type check - refine later based on parameter
-        # param = v.parameter
-        # expected_type = getattr(DiffusionTaskBase.__annotations__, param, None) # Needs refinement
-        # for val in v.values: check type if possible
-        return v
-
-    # TODO: Add model_validator to ensure parameter names are unique across x, y, z axes.
+         if v is None: return v
+         if not v.values: raise ValueError("Axis values list cannot be empty")
+         return v
 
 class XYZGridResult(BaseModel):
     """Represents a single cell in the generated grid."""
@@ -87,17 +108,4 @@ class XYZGridResult(BaseModel):
 class XYZGridResponse(BaseModel):
     """Response containing the grid results."""
     grid_results: List[XYZGridResult]
-    # Maybe add combined grid image later?
-    # grid_image_base64: Optional[str] = None
     request_params: XYZGridRequest # Echo back request
-
-# --- Update existing models slightly ---
-class Text2ImageRequest(DiffusionTaskBase):
-    """Request model for Text-to-Image generation."""
-    num_outputs: int = Field(default=1, gt=0, le=4) # Limit batch size for now
-
-class Text2ImageResponse(BaseModel):
-    """Response model for Text-to-Image generation."""
-    images: List[ImageResult]
-    request_params: Text2ImageRequest # Keep original request type here
-    performance_ms: Optional[float] = None
