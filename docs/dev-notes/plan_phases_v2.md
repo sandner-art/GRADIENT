@@ -48,8 +48,8 @@
         *   ✅ Implement API call and basic image result display.
         *   ✅ Integrate form into main page (`+page.svelte`).
     *   **(Backend) Experiment DB & Metadata (v1):**
-        *   Setup basic SQLite database (using SQLAlchemy ORM).
-        *   Define initial DB schema (`ExperimentRun`, `GeneratedImage`, storing parameters, paths, timestamps, seeds).
+        *   ✅ Setup basic SQLite database (using SQLAlchemy ORM). Done.
+        *   ✅ Define initial DB schema (`ExperimentRun`, `GeneratedImage`, storing parameters, paths, timestamps, seeds).
         *   Modify `run_text_to_image` (and later other generators) to log run details and output paths to the database.
         *   Implement metadata injection (saving parameters as JSON chunk or EXIF) into generated PNGs.
     *   **(Backend) Basic File Management:**
