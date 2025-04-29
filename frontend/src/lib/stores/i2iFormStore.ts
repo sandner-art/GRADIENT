@@ -3,7 +3,7 @@ import { writable } from 'svelte/store';
 import type { ImageToImageRequest } from '$lib/types';
 
 export const i2iDefaultState: ImageToImageRequest = {
-    model_id: 'runwayml/stable-diffusion-v1-5',
+    model_id: 'photomatix_v3.fp16.safetensors',
     prompt: '',
     negative_prompt: '',
     height: 512,

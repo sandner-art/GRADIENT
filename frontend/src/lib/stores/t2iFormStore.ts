@@ -3,7 +3,7 @@ import { writable } from 'svelte/store';
 import type { Text2ImageRequest } from '$lib/types';
 
 export const t2iDefaultState: Text2ImageRequest = {
-    model_id: 'runwayml/stable-diffusion-v1-5',
+    model_id: 'photomatix_v3.fp16.safetensors',
     prompt: 'photo of a tabby cat programmer writing code, high resolution',
     negative_prompt: 'ugly, blurry, deformed, text, words, low quality',
     height: 512,

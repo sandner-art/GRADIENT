@@ -11,6 +11,7 @@ from .endpoints import status as status_endpoints
 from .endpoints import generate as generate_endpoints
 from .endpoints import llm as llm_endpoints
 from .endpoints import visualize as visualize_endpoints
+from .endpoints import presets as presets_endpoints
 from . import websocket as websocket_endpoints
 
 # Import DB initializer
@@ -95,6 +96,11 @@ logger.debug("Registered llm_endpoints router with prefix /api/v1/llm")
 # Visualization Endpoints (Latent Space, Sensitivity)
 app.include_router(visualize_endpoints.router, prefix="/api/v1/visualize", tags=["Visualization"])
 logger.debug("Registered visualize_endpoints router with prefix /api/v1/visualize")
+
+# --- Add Presets Router --- vvv
+app.include_router(presets_endpoints.router, prefix="/api/v1", tags=["Presets"])
+logger.debug("Registered presets_endpoints router with prefix /api/v1")
+# --- Add Presets Router --- ^^^
 
 # WebSocket Endpoint (Usually at root or specific path like /ws)
 # Ensure websocket_endpoints.router defines paths like "/ws"

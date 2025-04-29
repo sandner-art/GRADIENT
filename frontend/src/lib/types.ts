@@ -34,6 +34,45 @@ export interface Text2ImageResponse {
 // --- Text-to-Image Specific --- ^^^
 
 
+// --- From presets API models --- vvv
+
+/** Subset of parameters typically saved in a preset. */
+export interface PresetSetting {
+	negative_prompt?: string | null;
+	height?: number | null;
+	width?: number | null;
+	num_inference_steps?: number | null;
+	guidance_scale?: number | null; // Keep as number for now, handle scheduled CFG later if needed
+	scheduler_id?: string | null;
+	strength?: number | null; // For Img2Img presets
+    // vae_id?: string | null; // Add when ready
+    // Allow any other extra fields the backend might store
+    [key: string]: any;
+}
+
+/** Base structure for creating/reading presets (excluding DB ID etc.) */
+export interface PresetBase {
+	model_identifier: string;
+	preset_name: string;
+	settings: PresetSetting;
+	description?: string | null;
+}
+
+/** Structure for creating a new preset via API */
+export interface PresetCreate extends PresetBase {
+	// No extra fields needed for creation currently
+}
+
+/** Structure for reading a preset from the API (includes DB fields) */
+export interface PresetRead extends PresetBase {
+	id: number;
+	is_user_defined: boolean;
+	creation_time: string; // Represent DateTime as string from JSON
+	last_used_time?: string | null; // Represent DateTime as string from JSON
+}
+
+// --- From presets API models --- ^^^
+
 // --- From viz/models.py ---
 // Add LatentSpaceVizRequest/Response etc. here later if needed
 
