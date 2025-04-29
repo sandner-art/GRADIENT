@@ -10,6 +10,7 @@ from typing import List, Union # For route checking types
 from .endpoints import status as status_endpoints
 from .endpoints import generate as generate_endpoints
 from .endpoints import llm as llm_endpoints
+from .endpoints import system as system_endpoints # <-- Import
 from .endpoints import visualize as visualize_endpoints
 from .endpoints import presets as presets_endpoints
 from . import websocket as websocket_endpoints
@@ -101,6 +102,8 @@ logger.debug("Registered visualize_endpoints router with prefix /api/v1/visualiz
 app.include_router(presets_endpoints.router, prefix="/api/v1", tags=["Presets"])
 logger.debug("Registered presets_endpoints router with prefix /api/v1")
 # --- Add Presets Router --- ^^^
+
+app.include_router(system_endpoints.router, prefix="/api/v1", tags=["System Info"]) # <-- Register
 
 # WebSocket Endpoint (Usually at root or specific path like /ws)
 # Ensure websocket_endpoints.router defines paths like "/ws"
