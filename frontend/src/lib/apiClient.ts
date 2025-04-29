@@ -147,6 +147,7 @@ export function put<T>(endpoint: string, body: any, options: RequestInit = {}): 
 	return apiClient<T>(endpoint, { ...options, method: 'PUT', body: JSON.stringify(body) });
 }
 
+
 /** Makes a DELETE request */
 export function del<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
 	return apiClient<T>(endpoint, { ...options, method: 'DELETE' });

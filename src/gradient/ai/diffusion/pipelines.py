@@ -10,7 +10,7 @@ import datetime
 from io import BytesIO
 from pathlib import Path
 from PIL import Image
-from typing import List, Optional, Tuple, Union # Ensure Tuple and Union are imported
+from typing import List, Optional, Tuple, Union
 
 # DB Imports
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,13 +18,13 @@ from gradient.database.session import get_db_session, update_run_status
 from gradient.database.models import ExperimentRun, GeneratedOutput
 
 # AI Imports
-# Assuming loading helpers are now separate
-from .loading import load_diffusion_pipeline
+from .loading import load_diffusion_pipeline # Assuming loading helpers are now separate
 # Import specific request/response types used
 from .models import (
     Text2ImageRequest, Text2ImageResponse,
     ImageToImageRequest, ImageToImageResponse,
-    ImageResult
+    ImageResult,
+    LoRAParameter # Import LoRAParameter Pydantic model
 )
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 # Import specific pipeline types needed
@@ -82,7 +82,7 @@ def setup_scheduler_and_timesteps(
             scheduler_class = getattr(scheduler_module, request_scheduler_id)
             if issubclass(scheduler_class, SchedulerMixin):
                 scheduler = scheduler_class.from_config(pipeline.scheduler.config)
-                pipeline.scheduler = scheduler # IMPORTANT: Update pipeline instance
+                pipeline.scheduler = scheduler
                 logger.info(f"Run {run_uuid}: Successfully switched scheduler to {request_scheduler_id}")
             else:
                 logger.warning(f"Run {run_uuid}: '{request_scheduler_id}' not valid Scheduler. Using default '{original_scheduler_name}'.")
@@ -113,7 +113,7 @@ def setup_scheduler_and_timesteps(
         timesteps = scheduler.timesteps
         logger.info(f"Run {run_uuid}: Timesteps set for scheduler '{scheduler.__class__.__name__}'. Count: {len(timesteps)} (Max requested: {effective_num_steps}).")
         if timesteps is None or len(timesteps) == 0: raise ValueError("Scheduler returned empty timesteps.")
-        return scheduler, timesteps, effective_num_steps # Return final scheduler, timesteps array, and MAX requested steps
+        return scheduler, timesteps, effective_num_steps
     except Exception as e:
         logger.error(f"Run {run_uuid}: Failed to set timesteps ({effective_num_steps} steps) on scheduler '{scheduler.__class__.__name__}': {e}", exc_info=True)
         return None
@@ -125,13 +125,11 @@ def get_scheduled_guidance_scale(
     schedule_definition: Union[float, str, List[Tuple[int, float]]]
 ) -> float:
     """Calculates the guidance scale for the current step based on a schedule."""
-    # Basic implementation: only handles float for now
     if isinstance(schedule_definition, (float, int)):
         return float(schedule_definition)
-    # TODO: Implement parsing for string patterns ('linear_decay', 'cosine_anneal', 'step[10]=5')
-    # TODO: Implement logic for List[Tuple[int, float]]
+    # TODO: Implement parsing for string patterns and list of tuples
     logger.warning(f"Guidance scheduling not implemented for type {type(schedule_definition)}. Using fixed 7.5.")
-    return 7.5 # Fallback
+    return 7.5
 
 
 # --- run_text_to_image ---
@@ -149,6 +147,7 @@ async def run_text_to_image(
     if not parent_run_uuid:
         try:
             async with get_db_session() as db:
+                # Log initial request params (LoRAs/Embeddings included if sent)
                 params_to_log = request.model_dump(mode='json')
                 db_run = ExperimentRun(
                     run_uuid=run_uuid, run_type="text_to_image",
@@ -164,9 +163,10 @@ async def run_text_to_image(
 
     # --- Core Generation Logic ---
     images_pil: List[Image.Image] = []
-    final_params_dict = request.model_dump(exclude_unset=True) # Base params for saving
+    # Start with request params, exclude unset ones
+    final_params_dict = request.model_dump(exclude_unset=True)
     actual_scheduler_name = "Unknown"
-    effective_num_steps = request.num_inference_steps # Initialize with request value
+    effective_num_steps = request.num_inference_steps # Default
 
     try:
         # --- Setup Device & Dtype ---
@@ -179,7 +179,8 @@ async def run_text_to_image(
         # --- Load Pipeline (now passes loras/embeddings) ---
         pipeline: Optional[DiffusionPipeline] = await load_diffusion_pipeline(
             model_path_or_id=request.model_id, pipeline_type=pipeline_type, device=device_str, dtype=dtype,
-            loras=getattr(request, 'loras', None), embeddings=getattr(request, 'embeddings', None)
+            loras=getattr(request, 'loras', None), # Pass LoRA list
+            embeddings=getattr(request, 'embeddings', None) # Pass embedding list
             # vae_id=request.vae_id
         )
         if not pipeline:
@@ -196,10 +197,11 @@ async def run_text_to_image(
         if setup_result is None:
              error_msg = "Failed to setup scheduler or timesteps."
              if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-        scheduler, timesteps, effective_num_steps = setup_result # effective_num_steps is MAX requested steps
+        scheduler, timesteps, effective_num_steps = setup_result
         actual_scheduler_name = scheduler.__class__.__name__
-        final_params_dict['num_inference_steps'] = effective_num_steps # Log max steps used
-        final_params_dict['scheduler_id'] = actual_scheduler_name # Log actual scheduler used
+        # Update final params with actual values used
+        final_params_dict['num_inference_steps'] = effective_num_steps
+        final_params_dict['scheduler_id'] = actual_scheduler_name
 
         # --- Prepare Generator ---
         generator = None; effective_seed = request.seed
@@ -218,8 +220,7 @@ async def run_text_to_image(
 
         num_channels_latents = pipeline.unet.config.in_channels
         latents = pipeline.prepare_latents(request.num_outputs, num_channels_latents, height, width, dtype, device, generator)
-        # Check if CFG is possible before encoding prompt
-        guidance_float = request.guidance_scale if isinstance(request.guidance_scale, (float, int)) else 7.5 # Use default if scheduled
+        guidance_float = request.guidance_scale if isinstance(request.guidance_scale, (float, int)) else 7.5
         do_cfg = guidance_float > 1.0
 
         prompt_embeds, negative_prompt_embeds = pipeline.encode_prompt(
@@ -227,22 +228,21 @@ async def run_text_to_image(
             do_classifier_free_guidance=do_cfg, negative_prompt=request.negative_prompt
         )
         if do_cfg and negative_prompt_embeds is None:
-            logger.warning(f"Run {run_uuid}: CFG scale > 1 requested but negative prompt yielded no embeddings. Disabling CFG for this run.")
-            do_cfg = False # Disable CFG if neg prompt failed
+            logger.warning(f"Run {run_uuid}: CFG > 1 requested but no negative embeddings. Disabling CFG.")
+            do_cfg = False
 
         # --- Inference Loop ---
         logger.info(f"Run {run_uuid}: Running T2I inference loop with {len(timesteps)} steps using {actual_scheduler_name}...")
         for i, t in enumerate(pipeline.progress_bar(timesteps)):
             latent_model_input = torch.cat([latents] * 2) if do_cfg else latents
             latent_model_input = scheduler.scale_model_input(latent_model_input, t)
-
             current_prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds]) if do_cfg else prompt_embeds
 
             with torch.no_grad():
                 noise_pred = pipeline.unet(
                     latent_model_input, t,
                     encoder_hidden_states=current_prompt_embeds.to(device, dtype=dtype)
-                    # cross_attention_kwargs removed, handled by LoRA loading mechanism
+                    # cross_attention_kwargs removed
                 ).sample
 
             if do_cfg:
@@ -250,7 +250,6 @@ async def run_text_to_image(
                 if current_guidance_scale > 1.0:
                      noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                      noise_pred = noise_pred_uncond + current_guidance_scale * (noise_pred_text - noise_pred_uncond)
-                # else: Use combined noise_pred as is (implicitly handles scale <= 1.0)
 
             latents = scheduler.step(noise_pred, t, latents).prev_sample
 
@@ -273,26 +272,37 @@ async def run_text_to_image(
     results: List[ImageResult] = []; output_base_path = get_output_base_path() / run_uuid
     output_base_path.mkdir(parents=True, exist_ok=True); output_records_to_add = []
 
-    # Clean up final params dict for logging
+    # Prepare final params dict for serialization
     if 'custom_sigmas' in final_params_dict and not request.custom_sigmas: del final_params_dict['custom_sigmas']
-    # Ensure logged guidance_scale reflects original request (float or schedule def)
-    final_params_dict['guidance_scale'] = request.guidance_scale
-    # Add LoRAs/Embeddings used to final params
-    final_params_dict['loras'] = getattr(request, 'loras', None)
-    final_params_dict['embeddings'] = getattr(request, 'embeddings', None)
+    final_params_dict['guidance_scale'] = request.guidance_scale # Log original request value
 
+    # Convert LoRA objects to dicts for serialization before assigning to final_params_dict
+    serializable_loras = None
+    if getattr(request, 'loras', None):
+        try:
+             # Use model_dump() for Pydantic v2
+             serializable_loras = [lora.model_dump() for lora in request.loras]
+        except AttributeError: # Fallback for potential raw dicts? Should not happen with Pydantic validation
+             logger.warning("Could not dump LoRA parameters to dict, attempting direct use.")
+             serializable_loras = request.loras
+
+    final_params_dict['loras'] = serializable_loras # Assign serializable list (or None)
+    final_params_dict['embeddings'] = getattr(request, 'embeddings', None) # Strings are fine
 
     for i, img_pil in enumerate(images_pil):
         current_seed = effective_seed + i
         filename = f"t2i_output_{i:03d}_seed{current_seed}.png"
         file_path = output_base_path / filename; file_path_str = str(file_path.resolve())
-        output_params = final_params_dict.copy(); output_params['seed'] = current_seed
+
+        # output_params now contains serializable LoRA list
+        output_params = final_params_dict.copy()
+        output_params['seed'] = current_seed
 
         # Metadata Injection
         pnginfo = None
         try:
             from PIL.PngImagePlugin import PngInfo; pnginfo = PngInfo()
-            # Serialize carefully, handle non-serializable types if necessary
+            # default=str handles types json doesn't know natively (like datetime if it was in params)
             pnginfo.add_text("grad_parameters", json.dumps(output_params, default=str))
         except Exception as meta_e: logger.warning(f"Run {run_uuid}: Could not prepare PNG metadata: {meta_e}")
 
@@ -303,15 +313,21 @@ async def run_text_to_image(
         # Base64 Encode
         img_base64 = None
         try: buffered = BytesIO(); img_pil.save(buffered, format="PNG"); img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        except Exception as e: logger.error(f"Run {run_uuid}: Error encoding image {i} to base64: {e}")
+        except Exception as e: logger.error(f"Run {run_uuid}: Error encoding image {i} base64: {e}")
 
         # Append API Result
         if img_base64: results.append(ImageResult(image_base64=img_base64, seed=current_seed, parameters=output_params))
 
         # Prepare DB Output Record
-        if db_run_id: output_records_to_add.append(GeneratedOutput(run_id=db_run_id, output_type="image", file_path=file_path_str, parameters=output_params, creation_time=datetime.datetime.now(tz=datetime.timezone.utc)))
+        if db_run_id:
+            output_record = GeneratedOutput(
+                run_id=db_run_id, output_type="image", file_path=file_path_str,
+                parameters=output_params, # output_params is now JSON serializable
+                creation_time=datetime.datetime.now(tz=datetime.timezone.utc)
+            )
+            output_records_to_add.append(output_record)
 
-    # Batch Log Outputs to DB
+    # Batch Log Outputs to DB (Should succeed now)
     if output_records_to_add:
         try:
              async with get_db_session() as db: db.add_all(output_records_to_add); await db.commit()
@@ -357,7 +373,7 @@ async def run_image_to_image(
     images_pil: List[Image.Image] = []
     final_params_dict = request.model_dump(exclude_unset=True, exclude={'image_base64'})
     actual_scheduler_name = "Unknown"
-    effective_num_steps = request.num_inference_steps # Initialize with request value
+    effective_num_steps = request.num_inference_steps
 
     try:
         # --- Setup Device & Dtype ---
@@ -386,14 +402,13 @@ async def run_image_to_image(
             if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
 
         # --- Setup Scheduler and Timesteps ---
-        # I2I pipeline uses strength internally, so custom_sigmas are less applicable here
         setup_result = setup_scheduler_and_timesteps(
              pipeline, request.scheduler_id, None, request.num_inference_steps, device, run_uuid
         )
         if setup_result is None:
              error_msg = "Failed setup scheduler/timesteps."; logger.error(f"Run {run_uuid}: {error_msg}")
              if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-        scheduler, _, effective_num_steps = setup_result # We don't need the timesteps array directly for pipeline call
+        scheduler, _, effective_num_steps = setup_result
         actual_scheduler_name = scheduler.__class__.__name__
         final_params_dict['num_inference_steps'] = effective_num_steps
         final_params_dict['scheduler_id'] = actual_scheduler_name
@@ -437,11 +452,16 @@ async def run_image_to_image(
     results: List[ImageResult] = []; output_base_path = get_output_base_path() / run_uuid
     output_base_path.mkdir(parents=True, exist_ok=True); output_records_to_add = []
 
-    # Clean up final params dict
+    # Prepare final params dict for serialization
     if 'custom_sigmas' in final_params_dict: del final_params_dict['custom_sigmas']
     final_params_dict['strength'] = request.strength
-    final_params_dict['guidance_scale'] = request.guidance_scale # Log original request value
-    final_params_dict['loras'] = getattr(request, 'loras', None)
+    final_params_dict['guidance_scale'] = request.guidance_scale
+    # Convert LoRA objects to dicts for serialization
+    serializable_loras = None
+    if getattr(request, 'loras', None):
+        try: serializable_loras = [lora.model_dump() for lora in request.loras]
+        except AttributeError: logger.warning("Could not dump LoRA params to dict"); serializable_loras = request.loras
+    final_params_dict['loras'] = serializable_loras
     final_params_dict['embeddings'] = getattr(request, 'embeddings', None)
 
     for i, img_pil in enumerate(images_pil):
@@ -468,7 +488,13 @@ async def run_image_to_image(
         if img_base64: results.append(ImageResult(image_base64=img_base64, seed=current_seed, parameters=output_params))
 
         # Prepare DB Output Record
-        if db_run_id: output_records_to_add.append(GeneratedOutput(run_id=db_run_id, output_type="image", file_path=file_path_str, parameters=output_params, creation_time=datetime.datetime.now(tz=datetime.timezone.utc)))
+        if db_run_id:
+            output_record = GeneratedOutput(
+                run_id=db_run_id, output_type="image", file_path=file_path_str,
+                parameters=output_params, # output_params is now JSON serializable
+                creation_time=datetime.datetime.now(tz=datetime.timezone.utc)
+            )
+            output_records_to_add.append(output_record)
 
     # Batch Log Outputs to DB
     if output_records_to_add:
