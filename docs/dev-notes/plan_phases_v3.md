@@ -96,13 +96,13 @@
         *   ✅ Fetch available LoRAs/Embeddings dynamically.
         *   ✅ Include selected items in API payload (backend processing TBD).
     *   --- **NEXT TASKS WITHIN PHASE 2** ---
-    *   **(Backend) LoRA/Embedding Pipeline Integration:**
+    *   **(Backend) LoRA/Embedding Pipeline Integration: (implemented partially, need to add peft lora direct support and embeddings)**
         *   Modify `load_diffusion_pipeline` and/or pipeline execution (`run_text_to_image`, `run_image_to_image`) to dynamically load and apply selected LoRAs (using `load_lora_weights`) and potentially handle embedding triggers based on the request payload.
     *   **(UI) Implement XYZ Grid Display:**
         *   ✅ Basic `XYZGridDisplay.svelte` component created.
         *   (Refinement Needed) Enhance display (parameter visibility, Z-axis handling?), improve styling.
         *   (Refinement Needed) Ensure `handleRerun` logic correctly populates the chosen form (T2I/I2I).
-    *   **(UI) Implement LLM Chat Interface:** Create `LLMChat.svelte` (currently placeholder), implement chat history display, message input, API calls (including handling SSE stream), and response rendering.
+    *   **(UI) Implement LLM Chat Interface:** Create `LLMChat.svelte` (currently working placeholder), implement chat history display, message input, API calls (including handling SSE stream), and response rendering.
     *   **(Backend) Implement Inpainting Pipeline:** Define `StableDiffusionInpaintPipeline` logic, models, API endpoint (`run_inpainting` handling image+mask). Integrate DB logging.
     *   **(UI) Add Inpainting Form:** Create `InpaintingForm.svelte`, add image upload, **implement/integrate mask drawing component** (or mask upload), hook up API call. Add Inpainting tab.
     *   **(Backend/UI) Basic ControlNet Handling:** Backend loading/pipeline integration (`StableDiffusionControlNet...Pipeline`), API updates, Frontend UI for control image upload, model selection, weight setting.

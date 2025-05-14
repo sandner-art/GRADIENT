@@ -32,7 +32,7 @@ python-dotenv = "^1.0.0"
 torch = { version = "~2.5.0", source = "pytorch_cu121" } # Allows >=2.5.0, <2.6.0 from cu121 source
 torchvision = { version = "~0.20.0", source = "pytorch_cu121" } # Allows >=0.20.0, <0.21.0 from cu121 source
 torchaudio = { version = "~2.5.0", source = "pytorch_cu121" } # Allows >=2.5.0, <2.6.0 from cu121 source
-diffusers = "^0.29.0"
+diffusers = "^0.33.1"
 transformers = "^4.41.0" # Diffusers often depends on this
 llama-cpp-python = "^0.2.79" # Check for latest compatible version
 # --- Add AI Core Libraries --- ^^^
