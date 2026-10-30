@@ -1,511 +1,364 @@
 # src/gradient/ai/diffusion/pipelines.py
+"""Text-to-image and image-to-image generation for any diffusers model family.
 
-import logging
-import torch
-import time
+Generation calls the pipeline's own `__call__` (so SDXL / SD3.5 / FLUX / Qwen-Image
+/ Z-Image ... behave exactly as their authors intended) and attaches research
+hooks through `callback_on_step_end`:
+  * scheduled CFG (per-step guidance values, see guidance.py)
+  * step progress reporting (/api/v1/system/status)
+The hook point is also where future modulation (prompt switching, latent
+grafting, layer skipping) plugs in.
+
+Every image is generated with its own seeded generator, so the logged seed of
+image i reproduces that image alone.
+"""
+
 import base64
-import uuid
-import json
 import datetime
+import inspect
+import json
+import logging
+import time
+import uuid
+from dataclasses import dataclass
 from io import BytesIO
-from pathlib import Path
+from typing import Any
+
+import torch
 from PIL import Image
-from typing import List, Optional, Tuple, Union
+from PIL.PngImagePlugin import PngInfo
 
-# DB Imports
-from sqlalchemy.ext.asyncio import AsyncSession
-from gradient.database.session import get_db_session, update_run_status
+from gradient.core.config import get_outputs_dir, get_setting
+from gradient.core.device import get_device
+from gradient.core.scheduling import progress_tracker, run_gpu_task
 from gradient.database.models import ExperimentRun, GeneratedOutput
+from gradient.database.session import get_db_session, update_run_status
 
-# AI Imports
-from .loading import load_diffusion_pipeline # Assuming loading helpers are now separate
-# Import specific request/response types used
+from .guidance import is_constant, parse_guidance_schedule
+from .loading import DYNAMIC_CFG_FAMILIES, LoadedPipeline, get_pipeline
 from .models import (
-    Text2ImageRequest, Text2ImageResponse,
-    ImageToImageRequest, ImageToImageResponse,
+    DiffusionTaskBase,
     ImageResult,
-    LoRAParameter # Import LoRAParameter Pydantic model
+    ImageToImageRequest,
+    ImageToImageResponse,
+    Text2ImageRequest,
+    Text2ImageResponse,
 )
-from diffusers.schedulers.scheduling_utils import SchedulerMixin
-# Import specific pipeline types needed
-from diffusers import (
-    StableDiffusionPipeline,
-    StableDiffusionImg2ImgPipeline, # Explicitly import
-    DiffusionPipeline,
-    AutoencoderKL
-)
-# Import specific scheduler types (optional, for type hinting etc.)
-from diffusers.schedulers import DDIMScheduler, DPMSolverMultistepScheduler
 
 logger = logging.getLogger(__name__)
 
-# --- Output Path ---
-def get_output_base_path() -> Path:
-     # TODO: Read from config
-     output_path = Path("./experiments/")
-     output_path.mkdir(parents=True, exist_ok=True)
-     return output_path
 
-# --- Helper Function to Prepare Image (for Img2Img) ---
-def prepare_init_image(image_base64: str, width: int, height: int) -> Optional[Image.Image]:
-    """Decodes, validates, and resizes the initial image."""
+# --------------------------------------------------------------------------- helpers
+def get_output_base_path():
+    return get_outputs_dir()
+
+
+def prepare_init_image(image_base64: str, width: int, height: int) -> Image.Image:
+    """Decode and resize the initial image (raises ValueError on bad input)."""
     try:
-        image_bytes = base64.b64decode(image_base64)
-        image = Image.open(BytesIO(image_bytes)).convert("RGB")
-        logger.info(f"Input image loaded: mode={image.mode}, size={image.size}")
-        image = image.resize((width, height), Image.Resampling.LANCZOS)
-        logger.info(f"Input image resized to: {image.size}")
-        return image
+        if "," in image_base64[:100] and image_base64.lstrip().startswith("data:"):
+            image_base64 = image_base64.split(",", 1)[1]
+        image = Image.open(BytesIO(base64.b64decode(image_base64))).convert("RGB")
     except Exception as e:
-        logger.error(f"Failed to prepare initial image: {e}", exc_info=True)
+        raise ValueError(f"Could not decode the input image: {e}") from e
+    return image.resize((width, height), Image.Resampling.LANCZOS)
+
+
+def resolve_seed(seed: int | None) -> int:
+    if seed is None:
+        return int(torch.randint(0, 2**32 - 1, (1,)).item())
+    return int(seed) % (2**32)
+
+
+def _set_scheduler(pipe, entry: LoadedPipeline, scheduler_id: str | None) -> str:
+    """Switch scheduler (validated against the model's compatible list) or restore the default."""
+    import diffusers
+
+    if entry.default_scheduler_config is None or getattr(pipe, "scheduler", None) is None:
+        return "n/a"
+    default_name = entry.default_scheduler_config.get("_class_name", type(pipe.scheduler).__name__)
+    target = scheduler_id if scheduler_id and scheduler_id != "Default" else default_name
+    if type(pipe.scheduler).__name__ == target:
+        return target  # schedulers are always rebuilt from the model's default config
+    if target not in compatible_schedulers(entry):
+        raise ValueError(
+            f"Scheduler '{target}' is not compatible with {entry.pipeline_class}. "
+            f"Compatible: {', '.join(compatible_schedulers(entry))}"
+        )
+    cls = getattr(diffusers, target)
+    pipe.scheduler = cls.from_config(entry.default_scheduler_config)
+    return target
+
+
+def compatible_schedulers(entry: LoadedPipeline) -> list[str]:
+    import diffusers
+
+    name = (entry.default_scheduler_config or {}).get("_class_name")
+    if not name:
+        return []
+    cls = getattr(diffusers, name, None)
+    names = {name} | set(getattr(cls, "_compatibles", []) or [])
+    return sorted(n for n in names if isinstance(n, str) and hasattr(diffusers, n))
+
+
+def _encode_png(img: Image.Image) -> str:
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+@dataclass
+class GenerationResult:
+    images: list[Image.Image]
+    seeds: list[int]
+    params: dict[str, Any]
+
+
+# --------------------------------------------------------------------------- core (blocking)
+def generate_images(
+    request: DiffusionTaskBase,
+    task: str = "text2image",
+    init_image_b64: str | None = None,
+    strength: float | None = None,
+    num_outputs: int = 1,
+    output_type: str = "pil",
+) -> GenerationResult:
+    """Blocking generation. Run via `run_gpu_task`."""
+    pipe, entry = get_pipeline(
+        request.model_id,
+        task=task,
+        vae_id=request.vae_id,
+        loras=request.loras,
+        embeddings=request.embeddings,
+    )
+    call_signature = inspect.signature(pipe.__call__).parameters
+    call_params = set(call_signature)
+    params: dict[str, Any] = request.model_dump(mode="json", exclude={"image_base64"})
+    params.update(
+        pipeline=type(pipe).__name__,
+        family=entry.family,
+        memory_mode=entry.memory_mode,
+        dtype=str(entry.dtype).removeprefix("torch."),
+    )
+
+    params["scheduler_id"] = _set_scheduler(pipe, entry, request.scheduler_id)
+
+    kwargs: dict[str, Any] = {
+        "prompt": request.prompt,
+        "height": request.height,
+        "width": request.width,
+        "num_inference_steps": request.num_inference_steps,
+        "num_images_per_prompt": num_outputs,
+        "output_type": output_type,
+    }
+    if request.negative_prompt and "negative_prompt" in call_params:
+        kwargs["negative_prompt"] = request.negative_prompt
+    elif request.negative_prompt:
+        params["negative_prompt_applied"] = False
+
+    # Noise schedule
+    if request.custom_sigmas:
+        if "sigmas" not in call_params:
+            raise ValueError(f"{entry.pipeline_class} does not accept custom sigmas")
+        if "sigmas" not in inspect.signature(pipe.scheduler.set_timesteps).parameters:
+            raise ValueError(
+                f"Scheduler {type(pipe.scheduler).__name__} does not support custom sigmas; "
+                "choose EulerDiscreteScheduler (UNet models) or the default flow-matching scheduler."
+            )
+        kwargs["sigmas"] = list(request.custom_sigmas)
+        params["custom_sigmas_applied"] = True
+
+    # Guidance (constant or scheduled)
+    est_steps = max(
+        1,
+        (len(request.custom_sigmas) - 1) if request.custom_sigmas else request.num_inference_steps,
+    )
+    schedule = parse_guidance_schedule(request.guidance_scale, est_steps)
+    # Qwen-Image style pipelines run real CFG through `true_cfg_scale` (needs a negative prompt);
+    # their `guidance_scale` only exists for guidance-distilled variants.
+    gs_param = call_signature.get("guidance_scale")
+    uses_true_cfg = "true_cfg_scale" in call_params and (
+        gs_param is None or gs_param.default is None
+    )
+    if uses_true_cfg:
+        kwargs["true_cfg_scale"] = schedule[0]
+        if schedule[0] > 1 and "negative_prompt" not in kwargs:
+            kwargs["negative_prompt"] = " "
+        params["guidance_parameter"] = "true_cfg_scale"
+    else:
+        kwargs["guidance_scale"] = schedule[0]
+    callbacks_enabled = "callback_on_step_end" in call_params
+    scheduled = not is_constant(schedule)
+    if scheduled and (entry.family not in DYNAMIC_CFG_FAMILIES or not callbacks_enabled):
+        logger.warning(
+            "Scheduled guidance is not supported for %s; using %.2f",
+            entry.pipeline_class,
+            schedule[0],
+        )
+        params["guidance_schedule_applied"] = False
+        scheduled = False
+    elif scheduled:
+        params["guidance_schedule_applied"] = True
+        params["guidance_values"] = [round(v, 4) for v in schedule]
+
+    cfg_active = schedule[0] > 1.0
+
+    def on_step_end(pipeline, step: int, timestep, callback_kwargs: dict) -> dict:
+        progress_tracker.update(step + 1)
+        if scheduled and step + 1 < len(schedule):
+            value = schedule[step + 1]
+            # The CFG batch layout is fixed at the first step: keep CFG on (>1) or off (<=1).
+            pipeline._guidance_scale = max(value, 1.0001) if cfg_active else min(value, 1.0)
+        return callback_kwargs
+
+    if callbacks_enabled:
+        kwargs["callback_on_step_end"] = on_step_end
+
+    # Per-image seeds => each image is reproducible from its own logged seed.
+    base_seed = resolve_seed(request.seed)
+    seeds = [(base_seed + i) % (2**32) for i in range(num_outputs)]
+    exec_device = getattr(pipe, "_execution_device", get_device())
+    gen_device = "cpu" if torch.device(exec_device).type == "mps" else exec_device
+    kwargs["generator"] = [torch.Generator(device=gen_device).manual_seed(s) for s in seeds]
+
+    if task == "image2image":
+        if init_image_b64 is None:
+            raise ValueError("image_base64 is required for image-to-image")
+        kwargs["image"] = prepare_init_image(init_image_b64, request.width, request.height)
+        if strength is not None and "strength" in call_params:
+            kwargs["strength"] = strength
+
+    kwargs = {k: v for k, v in kwargs.items() if k in call_params or k == "callback_on_step_end"}
+
+    vae = getattr(pipe, "vae", None)
+    if vae is not None and hasattr(vae, "enable_tiling"):
+        if request.width * request.height >= int(
+            get_setting("performance.vae_tiling_min_pixels", 1572864)
+        ):
+            vae.enable_tiling()
+        elif hasattr(vae, "disable_tiling"):
+            vae.disable_tiling()
+
+    progress_tracker.start(task, request.model_id, est_steps)
+    try:
+        with torch.inference_mode():
+            output = pipe(**kwargs)
+    finally:
+        progress_tracker.finish()
+    images = list(output.images)
+    if not images:
+        raise RuntimeError("Pipeline returned no images")
+    return GenerationResult(images=images, seeds=seeds, params=params)
+
+
+# --------------------------------------------------------------------------- async wrappers
+async def _create_run(run_uuid: str, run_type: str, params: dict, start_time: float) -> int | None:
+    try:
+        async with get_db_session() as db:
+            run = ExperimentRun(
+                run_uuid=run_uuid,
+                run_type=run_type,
+                start_time=datetime.datetime.fromtimestamp(start_time, tz=datetime.UTC),
+                status="running",
+                base_parameters=params,
+            )
+            db.add(run)
+            await db.flush()
+            return run.id
+    except Exception as e:
+        logger.error("Run %s: could not create DB record: %s", run_uuid, e)
         return None
 
-# --- Helper Function for Scheduler Loading/Setting ---
-def setup_scheduler_and_timesteps(
-    pipeline: DiffusionPipeline,
-    request_scheduler_id: Optional[str],
-    request_custom_sigmas: Optional[List[float]],
-    request_num_steps: int,
-    device: torch.device,
-    run_uuid: str
-) -> Optional[Tuple[SchedulerMixin, torch.Tensor, int]]:
-    """Loads scheduler if requested, sets timesteps, returns scheduler, timesteps, and effective steps."""
-    scheduler = pipeline.scheduler
-    effective_num_steps = request_num_steps
 
-    # --- 1. Override Scheduler ---
-    if request_scheduler_id:
-        logger.info(f"Run {run_uuid}: Attempting to load requested scheduler: {request_scheduler_id}")
-        original_scheduler_name = scheduler.__class__.__name__
-        try:
-            scheduler_module = __import__('diffusers', fromlist=[request_scheduler_id])
-            scheduler_class = getattr(scheduler_module, request_scheduler_id)
-            if issubclass(scheduler_class, SchedulerMixin):
-                scheduler = scheduler_class.from_config(pipeline.scheduler.config)
-                pipeline.scheduler = scheduler
-                logger.info(f"Run {run_uuid}: Successfully switched scheduler to {request_scheduler_id}")
-            else:
-                logger.warning(f"Run {run_uuid}: '{request_scheduler_id}' not valid Scheduler. Using default '{original_scheduler_name}'.")
-                scheduler = pipeline.scheduler
-        except (ImportError, AttributeError) as e:
-            logger.warning(f"Run {run_uuid}: Could not import scheduler '{request_scheduler_id}'. Using default '{original_scheduler_name}'. Error: {e}")
-            scheduler = pipeline.scheduler
-        except Exception as e:
-            logger.error(f"Run {run_uuid}: Error loading scheduler '{request_scheduler_id}'. Using default '{original_scheduler_name}'. Error: {e}", exc_info=True)
-            scheduler = pipeline.scheduler
-    else:
-        logger.info(f"Run {run_uuid}: Using default scheduler: {scheduler.__class__.__name__}")
-
-    # --- 2. Determine Effective Steps ---
-    timesteps = None
-    if request_custom_sigmas is not None:
-        if len(request_custom_sigmas) < 2: logger.error(f"Run {run_uuid}: Custom sigmas list needs >= 2 values."); return None
-        calculated_steps = len(request_custom_sigmas) - 1
-        if calculated_steps <= 0: logger.error(f"Run {run_uuid}: Custom sigmas list length resulted in <= 0 steps."); return None
-        effective_num_steps = calculated_steps
-        logger.info(f"Run {run_uuid}: Using custom sigma list length for num_inference_steps={effective_num_steps}.")
-    else:
-        if effective_num_steps <= 0: logger.error(f"Run {run_uuid}: num_inference_steps must be positive ({effective_num_steps})."); return None
-
-    # --- 3. Set Timesteps on Scheduler ---
-    try:
-        scheduler.set_timesteps(effective_num_steps, device=device)
-        timesteps = scheduler.timesteps
-        logger.info(f"Run {run_uuid}: Timesteps set for scheduler '{scheduler.__class__.__name__}'. Count: {len(timesteps)} (Max requested: {effective_num_steps}).")
-        if timesteps is None or len(timesteps) == 0: raise ValueError("Scheduler returned empty timesteps.")
-        return scheduler, timesteps, effective_num_steps
-    except Exception as e:
-        logger.error(f"Run {run_uuid}: Failed to set timesteps ({effective_num_steps} steps) on scheduler '{scheduler.__class__.__name__}': {e}", exc_info=True)
-        return None
-
-# --- Helper Function for Scheduled CFG (Placeholder) ---
-def get_scheduled_guidance_scale(
-    step_index: int,
-    total_steps: int,
-    schedule_definition: Union[float, str, List[Tuple[int, float]]]
-) -> float:
-    """Calculates the guidance scale for the current step based on a schedule."""
-    if isinstance(schedule_definition, (float, int)):
-        return float(schedule_definition)
-    # TODO: Implement parsing for string patterns and list of tuples
-    logger.warning(f"Guidance scheduling not implemented for type {type(schedule_definition)}. Using fixed 7.5.")
-    return 7.5
+def _save_outputs(
+    result: GenerationResult, run_uuid: str, prefix: str
+) -> list[tuple[str, dict, Image.Image]]:
+    out_dir = get_output_base_path() / run_uuid
+    out_dir.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for img, seed in zip(result.images, result.seeds, strict=False):
+        params = {**result.params, "seed": seed}
+        info = PngInfo()
+        info.add_text("grad_parameters", json.dumps(params, default=str))
+        path = out_dir / f"{prefix}_{uuid.uuid4().hex[:8]}_seed{seed}.png"
+        img.save(path, "PNG", pnginfo=info)
+        saved.append((str(path.resolve()), params, img))
+    return saved
 
 
-# --- run_text_to_image ---
-async def run_text_to_image(
-    request: Text2ImageRequest,
-    parent_run_uuid: Optional[str] = None
-) -> Optional[Text2ImageResponse]:
-    """Runs the text-to-image pipeline, logs to DB, saves images with metadata."""
-    start_time = time.time()
+async def _run(
+    run_type: str,
+    request: Text2ImageRequest | ImageToImageRequest,
+    parent_run_uuid: str | None,
+    parent_run_id: int | None,
+) -> tuple[list[ImageResult], float]:
+    start = time.time()
     run_uuid = parent_run_uuid or str(uuid.uuid4())
-    logger.info(f"Starting text-to-image run {run_uuid} Prompt: '{request.prompt[:50]}...'")
-    db_run_id: Optional[int] = None
+    db_run_id = parent_run_id
+    if parent_run_uuid is None:
+        logged = request.model_dump(mode="json", exclude={"image_base64"})
+        if isinstance(request, ImageToImageRequest):
+            logged["image_provided"] = True
+        db_run_id = await _create_run(run_uuid, run_type, logged, start)
 
-    # --- DB Logging Start ---
-    if not parent_run_uuid:
+    task = "image2image" if isinstance(request, ImageToImageRequest) else "text2image"
+    try:
+        result = await run_gpu_task(
+            generate_images,
+            request,
+            task,
+            getattr(request, "image_base64", None),
+            getattr(request, "strength", None),
+            request.num_outputs,
+        )
+    except Exception as e:
+        if db_run_id and parent_run_uuid is None:
+            await update_run_status(
+                db_run_id, "failed", error=f"{type(e).__name__}: {e}", end_time=time.time()
+            )
+        raise
+
+    prefix = "t2i" if task == "text2image" else "i2i"
+    saved = _save_outputs(result, run_uuid, prefix)
+    images = [
+        ImageResult(image_base64=_encode_png(img), seed=p["seed"], parameters=p)
+        for _, p, img in saved
+    ]
+
+    if db_run_id:
         try:
             async with get_db_session() as db:
-                # Log initial request params (LoRAs/Embeddings included if sent)
-                params_to_log = request.model_dump(mode='json')
-                db_run = ExperimentRun(
-                    run_uuid=run_uuid, run_type="text_to_image",
-                    start_time=datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc),
-                    status="running", base_parameters=params_to_log
+                db.add_all(
+                    GeneratedOutput(
+                        run_id=db_run_id,
+                        output_type="image",
+                        file_path=path,
+                        parameters=params,
+                        creation_time=datetime.datetime.now(tz=datetime.UTC),
+                    )
+                    for path, params, _ in saved
                 )
-                db.add(db_run)
-                await db.commit(); await db.refresh(db_run)
-                db_run_id = db_run.id
-                logger.info(f"Run {run_uuid}: Created ExperimentRun record ID: {db_run_id}")
         except Exception as e:
-            logger.error(f"Run {run_uuid}: Failed to create initial DB record: {e}", exc_info=True)
+            logger.error("Run %s: could not log outputs: %s", run_uuid, e)
+        if parent_run_uuid is None:
+            await update_run_status(db_run_id, "completed", end_time=time.time())
 
-    # --- Core Generation Logic ---
-    images_pil: List[Image.Image] = []
-    # Start with request params, exclude unset ones
-    final_params_dict = request.model_dump(exclude_unset=True)
-    actual_scheduler_name = "Unknown"
-    effective_num_steps = request.num_inference_steps # Default
-
-    try:
-        # --- Setup Device & Dtype ---
-        pipeline_type = "StableDiffusionPipeline"
-        device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        device = torch.device(device_str)
-        dtype = torch.float16 if device.type == "cuda" else torch.float32
-        logger.debug(f"Run {run_uuid}: Device='{device.type}' DType='{dtype}' Pipeline='{pipeline_type}'")
-
-        # --- Load Pipeline (now passes loras/embeddings) ---
-        pipeline: Optional[DiffusionPipeline] = await load_diffusion_pipeline(
-            model_path_or_id=request.model_id, pipeline_type=pipeline_type, device=device_str, dtype=dtype,
-            loras=getattr(request, 'loras', None), # Pass LoRA list
-            embeddings=getattr(request, 'embeddings', None) # Pass embedding list
-            # vae_id=request.vae_id
-        )
-        if not pipeline:
-            error_msg = f"Failed to load pipeline for model: {request.model_id}"
-            if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg)
-            return None
-        pipeline.to(device)
-        logger.info(f"Run {run_uuid}: Loaded pipeline object type: {type(pipeline).__name__}")
-
-        # --- Setup Scheduler and Timesteps ---
-        setup_result = setup_scheduler_and_timesteps(
-             pipeline, request.scheduler_id, request.custom_sigmas, request.num_inference_steps, device, run_uuid
-        )
-        if setup_result is None:
-             error_msg = "Failed to setup scheduler or timesteps."
-             if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-        scheduler, timesteps, effective_num_steps = setup_result
-        actual_scheduler_name = scheduler.__class__.__name__
-        # Update final params with actual values used
-        final_params_dict['num_inference_steps'] = effective_num_steps
-        final_params_dict['scheduler_id'] = actual_scheduler_name
-
-        # --- Prepare Generator ---
-        generator = None; effective_seed = request.seed
-        if effective_seed is None: effective_seed = torch.randint(0, 2**32 - 1, (1,)).item()
-        else:
-            try: effective_seed = int(effective_seed)
-            except (ValueError, TypeError): effective_seed = torch.randint(0, 2**32 - 1, (1,)).item()
-        generator = torch.Generator(device=device).manual_seed(effective_seed)
-        final_params_dict['seed'] = effective_seed # Log resolved seed
-
-        # --- Latent & Embedding Prep ---
-        height, width = request.height, request.width
-        if height <= 0 or width <= 0 or height % 8 != 0 or width % 8 != 0 :
-             error_msg = f"Invalid dimensions W={width}, H={height}."
-             if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-
-        num_channels_latents = pipeline.unet.config.in_channels
-        latents = pipeline.prepare_latents(request.num_outputs, num_channels_latents, height, width, dtype, device, generator)
-        guidance_float = request.guidance_scale if isinstance(request.guidance_scale, (float, int)) else 7.5
-        do_cfg = guidance_float > 1.0
-
-        prompt_embeds, negative_prompt_embeds = pipeline.encode_prompt(
-            prompt=request.prompt, device=device, num_images_per_prompt=request.num_outputs,
-            do_classifier_free_guidance=do_cfg, negative_prompt=request.negative_prompt
-        )
-        if do_cfg and negative_prompt_embeds is None:
-            logger.warning(f"Run {run_uuid}: CFG > 1 requested but no negative embeddings. Disabling CFG.")
-            do_cfg = False
-
-        # --- Inference Loop ---
-        logger.info(f"Run {run_uuid}: Running T2I inference loop with {len(timesteps)} steps using {actual_scheduler_name}...")
-        for i, t in enumerate(pipeline.progress_bar(timesteps)):
-            latent_model_input = torch.cat([latents] * 2) if do_cfg else latents
-            latent_model_input = scheduler.scale_model_input(latent_model_input, t)
-            current_prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds]) if do_cfg else prompt_embeds
-
-            with torch.no_grad():
-                noise_pred = pipeline.unet(
-                    latent_model_input, t,
-                    encoder_hidden_states=current_prompt_embeds.to(device, dtype=dtype)
-                    # cross_attention_kwargs removed
-                ).sample
-
-            if do_cfg:
-                current_guidance_scale = get_scheduled_guidance_scale(i, len(timesteps), request.guidance_scale)
-                if current_guidance_scale > 1.0:
-                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                     noise_pred = noise_pred_uncond + current_guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-            latents = scheduler.step(noise_pred, t, latents).prev_sample
-
-        # --- VAE Decode ---
-        vae_scaling_factor = getattr(pipeline.vae.config, 'scaling_factor', 0.18215)
-        latents_scaled = 1 / vae_scaling_factor * latents
-        with torch.no_grad(): image = pipeline.vae.decode(latents_scaled.to(device=pipeline.vae.device, dtype=pipeline.vae.dtype)).sample
-        image = (image / 2 + 0.5).clamp(0, 1); image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        images_pil = pipeline.numpy_to_pil(image)
-        if not images_pil: raise ValueError("VAE decoding produced no images.")
-        logger.info(f"Run {run_uuid}: T2I Inference completed. Generated {len(images_pil)} image(s).")
-
-    except Exception as e:
-        error_during_run = f"{type(e).__name__}: {e}"
-        logger.error(f"Run {run_uuid}: Error during T2I core logic: {e}", exc_info=True)
-        if db_run_id: await update_run_status(db_run_id, "failed", error=error_during_run)
-        return None
-
-    # --- Process, Save, Log Outputs ---
-    results: List[ImageResult] = []; output_base_path = get_output_base_path() / run_uuid
-    output_base_path.mkdir(parents=True, exist_ok=True); output_records_to_add = []
-
-    # Prepare final params dict for serialization
-    if 'custom_sigmas' in final_params_dict and not request.custom_sigmas: del final_params_dict['custom_sigmas']
-    final_params_dict['guidance_scale'] = request.guidance_scale # Log original request value
-
-    # Convert LoRA objects to dicts for serialization before assigning to final_params_dict
-    serializable_loras = None
-    if getattr(request, 'loras', None):
-        try:
-             # Use model_dump() for Pydantic v2
-             serializable_loras = [lora.model_dump() for lora in request.loras]
-        except AttributeError: # Fallback for potential raw dicts? Should not happen with Pydantic validation
-             logger.warning("Could not dump LoRA parameters to dict, attempting direct use.")
-             serializable_loras = request.loras
-
-    final_params_dict['loras'] = serializable_loras # Assign serializable list (or None)
-    final_params_dict['embeddings'] = getattr(request, 'embeddings', None) # Strings are fine
-
-    for i, img_pil in enumerate(images_pil):
-        current_seed = effective_seed + i
-        filename = f"t2i_output_{i:03d}_seed{current_seed}.png"
-        file_path = output_base_path / filename; file_path_str = str(file_path.resolve())
-
-        # output_params now contains serializable LoRA list
-        output_params = final_params_dict.copy()
-        output_params['seed'] = current_seed
-
-        # Metadata Injection
-        pnginfo = None
-        try:
-            from PIL.PngImagePlugin import PngInfo; pnginfo = PngInfo()
-            # default=str handles types json doesn't know natively (like datetime if it was in params)
-            pnginfo.add_text("grad_parameters", json.dumps(output_params, default=str))
-        except Exception as meta_e: logger.warning(f"Run {run_uuid}: Could not prepare PNG metadata: {meta_e}")
-
-        # Save Image
-        try: img_pil.save(file_path_str, "PNG", pnginfo=pnginfo)
-        except Exception as e: logger.error(f"Run {run_uuid}: Failed save image {file_path_str}: {e}"); continue
-
-        # Base64 Encode
-        img_base64 = None
-        try: buffered = BytesIO(); img_pil.save(buffered, format="PNG"); img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        except Exception as e: logger.error(f"Run {run_uuid}: Error encoding image {i} base64: {e}")
-
-        # Append API Result
-        if img_base64: results.append(ImageResult(image_base64=img_base64, seed=current_seed, parameters=output_params))
-
-        # Prepare DB Output Record
-        if db_run_id:
-            output_record = GeneratedOutput(
-                run_id=db_run_id, output_type="image", file_path=file_path_str,
-                parameters=output_params, # output_params is now JSON serializable
-                creation_time=datetime.datetime.now(tz=datetime.timezone.utc)
-            )
-            output_records_to_add.append(output_record)
-
-    # Batch Log Outputs to DB (Should succeed now)
-    if output_records_to_add:
-        try:
-             async with get_db_session() as db: db.add_all(output_records_to_add); await db.commit()
-             logger.info(f"Run {run_uuid}: Logged {len(output_records_to_add)} output records to DB.")
-        except Exception as e: logger.error(f"Run {run_uuid}: Failed to log output records to DB: {e}", exc_info=True)
-
-    # Finalize Run
-    end_time = time.time(); performance_ms = (end_time - start_time) * 1000
-    logger.info(f"Run {run_uuid}: Text-to-image request processed in {performance_ms:.2f} ms.")
-    if db_run_id: await update_run_status(db_run_id, "completed", end_time=end_time)
-
-    return Text2ImageResponse(images=results, request_params=request, performance_ms=performance_ms)
+    elapsed_ms = (time.time() - start) * 1000
+    logger.info("Run %s (%s): %d image(s) in %.0f ms", run_uuid, run_type, len(images), elapsed_ms)
+    return images, elapsed_ms
 
 
-# --- run_image_to_image ---
+async def run_text_to_image(
+    request: Text2ImageRequest, parent_run_uuid: str | None = None, parent_run_id: int | None = None
+) -> Text2ImageResponse:
+    images, ms = await _run("text_to_image", request, parent_run_uuid, parent_run_id)
+    return Text2ImageResponse(images=images, request_params=request, performance_ms=ms)
+
+
 async def run_image_to_image(
     request: ImageToImageRequest,
-    parent_run_uuid: Optional[str] = None
-) -> Optional[ImageToImageResponse]:
-    """Runs the image-to-image pipeline, logs to DB, saves images with metadata."""
-    start_time = time.time()
-    run_uuid = parent_run_uuid or str(uuid.uuid4())
-    logger.info(f"Starting image-to-image run {run_uuid} Prompt: '{request.prompt[:50]}...' Strength: {request.strength}")
-    db_run_id: Optional[int] = None
-
-    # --- DB Logging Start ---
-    if not parent_run_uuid:
-        try:
-            async with get_db_session() as db:
-                params_to_log = request.model_dump(mode='json', exclude={'image_base64'})
-                params_to_log['image_provided'] = True
-                db_run = ExperimentRun(
-                    run_uuid=run_uuid, run_type="image_to_image",
-                    start_time=datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc),
-                    status="running", base_parameters=params_to_log
-                )
-                db.add(db_run); await db.commit(); await db.refresh(db_run)
-                db_run_id = db_run.id
-                logger.info(f"Run {run_uuid}: Created ExperimentRun record ID: {db_run_id}")
-        except Exception as e: logger.error(f"Run {run_uuid}: Failed to create initial DB record: {e}", exc_info=True)
-
-    # --- Core Generation Logic ---
-    images_pil: List[Image.Image] = []
-    final_params_dict = request.model_dump(exclude_unset=True, exclude={'image_base64'})
-    actual_scheduler_name = "Unknown"
-    effective_num_steps = request.num_inference_steps
-
-    try:
-        # --- Setup Device & Dtype ---
-        pipeline_type = "StableDiffusionImg2ImgPipeline"
-        device_str = "cuda" if torch.cuda.is_available() else "cpu"
-        device = torch.device(device_str); dtype = torch.float16 if device.type == "cuda" else torch.float32
-        logger.debug(f"Run {run_uuid}: Device='{device.type}' DType='{dtype}' Pipeline='{pipeline_type}'")
-
-        # --- Load Pipeline (now passes loras/embeddings) ---
-        pipeline: Optional[DiffusionPipeline] = await load_diffusion_pipeline(
-            model_path_or_id=request.model_id, pipeline_type=pipeline_type, device=device_str, dtype=dtype,
-            loras=getattr(request, 'loras', None), embeddings=getattr(request, 'embeddings', None)
-            # vae_id=request.vae_id
-        )
-        if not pipeline:
-            error_msg = f"Failed load pipeline {request.model_id}"; logger.error(f"Run {run_uuid}: {error_msg}")
-            if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-        pipeline.to(device)
-        logger.info(f"Run {run_uuid}: Loaded pipeline object type: {type(pipeline).__name__}")
-
-        # --- Prepare Input Image ---
-        logger.info(f"Run {run_uuid}: Preparing initial image...")
-        init_image_pil = prepare_init_image(request.image_base64, request.width, request.height)
-        if init_image_pil is None:
-            error_msg = "Failed process init image."; logger.error(f"Run {run_uuid}: {error_msg}")
-            if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-
-        # --- Setup Scheduler and Timesteps ---
-        setup_result = setup_scheduler_and_timesteps(
-             pipeline, request.scheduler_id, None, request.num_inference_steps, device, run_uuid
-        )
-        if setup_result is None:
-             error_msg = "Failed setup scheduler/timesteps."; logger.error(f"Run {run_uuid}: {error_msg}")
-             if db_run_id: await update_run_status(db_run_id, "failed", error=error_msg); return None
-        scheduler, _, effective_num_steps = setup_result
-        actual_scheduler_name = scheduler.__class__.__name__
-        final_params_dict['num_inference_steps'] = effective_num_steps
-        final_params_dict['scheduler_id'] = actual_scheduler_name
-
-        # --- Prepare Generator ---
-        generator = None; effective_seed = request.seed
-        if effective_seed is None: effective_seed = torch.randint(0, 2**32 - 1, (1,)).item()
-        else:
-            try: effective_seed = int(effective_seed)
-            except (ValueError, TypeError): effective_seed = torch.randint(0, 2**32 - 1, (1,)).item()
-        generator = torch.Generator(device=device).manual_seed(effective_seed)
-        final_params_dict['seed'] = effective_seed
-
-        # --- Run Inference ---
-        logger.info(f"Run {run_uuid}: Running Img2Img inference strength={request.strength}, max_steps={effective_num_steps}...")
-        if not isinstance(pipeline, StableDiffusionImg2ImgPipeline): logger.warning(f"Run {run_uuid}: Pipeline is {type(pipeline).__name__}, not StableDiffusionImg2ImgPipeline.")
-
-        pipeline_args = {
-            "prompt": request.prompt, "image": init_image_pil, "strength": request.strength,
-            "num_inference_steps": effective_num_steps, "guidance_scale": request.guidance_scale,
-            "negative_prompt": request.negative_prompt, "num_images_per_prompt": request.num_outputs,
-            "generator": generator,
-            # cross_attention_kwargs removed
-        }
-        logger.debug(f"Run {run_uuid}: Calling {type(pipeline).__name__}.__call__ with args: strength={pipeline_args['strength']}, num_inference_steps={pipeline_args['num_inference_steps']}, guidance_scale={pipeline_args['guidance_scale']}, ...")
-
-        with torch.no_grad():
-            pipeline_output = pipeline(**pipeline_args)
-            images_pil = pipeline_output.images
-
-        if not images_pil: raise ValueError("Pipeline call completed but returned no images.")
-        logger.info(f"Run {run_uuid}: Img2Img Inference completed. Generated {len(images_pil)} image(s).")
-
-    except Exception as e:
-        error_during_run = f"{type(e).__name__}: {e}"
-        logger.error(f"Run {run_uuid}: Error during Img2Img core logic: {e}", exc_info=True)
-        if db_run_id: await update_run_status(db_run_id, "failed", error=error_during_run)
-        return None
-
-    # --- Process, Save, Log Outputs ---
-    results: List[ImageResult] = []; output_base_path = get_output_base_path() / run_uuid
-    output_base_path.mkdir(parents=True, exist_ok=True); output_records_to_add = []
-
-    # Prepare final params dict for serialization
-    if 'custom_sigmas' in final_params_dict: del final_params_dict['custom_sigmas']
-    final_params_dict['strength'] = request.strength
-    final_params_dict['guidance_scale'] = request.guidance_scale
-    # Convert LoRA objects to dicts for serialization
-    serializable_loras = None
-    if getattr(request, 'loras', None):
-        try: serializable_loras = [lora.model_dump() for lora in request.loras]
-        except AttributeError: logger.warning("Could not dump LoRA params to dict"); serializable_loras = request.loras
-    final_params_dict['loras'] = serializable_loras
-    final_params_dict['embeddings'] = getattr(request, 'embeddings', None)
-
-    for i, img_pil in enumerate(images_pil):
-        current_seed = effective_seed + i
-        filename = f"i2i_output_{i:03d}_seed{current_seed}.png"
-        file_path = output_base_path / filename; file_path_str = str(file_path.resolve())
-        output_params = final_params_dict.copy(); output_params['seed'] = current_seed
-
-        # Metadata Injection
-        pnginfo = None
-        try: from PIL.PngImagePlugin import PngInfo; pnginfo = PngInfo(); pnginfo.add_text("grad_parameters", json.dumps(output_params, default=str))
-        except Exception as meta_e: logger.warning(f"Run {run_uuid}: Could not prep PNG metadata: {meta_e}")
-
-        # Save Image
-        try: img_pil.save(file_path_str, "PNG", pnginfo=pnginfo)
-        except Exception as e: logger.error(f"Run {run_uuid}: Failed save image {file_path_str}: {e}"); continue
-
-        # Base64 Encode
-        img_base64 = None
-        try: buffered = BytesIO(); img_pil.save(buffered, format="PNG"); img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        except Exception as e: logger.error(f"Run {run_uuid}: Error encoding image {i} base64: {e}")
-
-        # Append API Result
-        if img_base64: results.append(ImageResult(image_base64=img_base64, seed=current_seed, parameters=output_params))
-
-        # Prepare DB Output Record
-        if db_run_id:
-            output_record = GeneratedOutput(
-                run_id=db_run_id, output_type="image", file_path=file_path_str,
-                parameters=output_params, # output_params is now JSON serializable
-                creation_time=datetime.datetime.now(tz=datetime.timezone.utc)
-            )
-            output_records_to_add.append(output_record)
-
-    # Batch Log Outputs to DB
-    if output_records_to_add:
-        try:
-             async with get_db_session() as db: db.add_all(output_records_to_add); await db.commit()
-             logger.info(f"Run {run_uuid}: Logged {len(output_records_to_add)} output records to DB.")
-        except Exception as e: logger.error(f"Run {run_uuid}: Failed log output records DB: {e}", exc_info=True)
-
-    # Finalize Run
-    end_time = time.time(); performance_ms = (end_time - start_time) * 1000
-    logger.info(f"Run {run_uuid}: Image-to-image request processed in {performance_ms:.2f} ms.")
-    if db_run_id: await update_run_status(db_run_id, "completed", end_time=end_time)
-
-    return ImageToImageResponse(images=results, request_params=request, performance_ms=performance_ms)
+    parent_run_uuid: str | None = None,
+    parent_run_id: int | None = None,
+) -> ImageToImageResponse:
+    images, ms = await _run("image_to_image", request, parent_run_uuid, parent_run_id)
+    return ImageToImageResponse(images=images, request_params=request, performance_ms=ms)

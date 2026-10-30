@@ -1,6 +1,6 @@
 <!-- frontend/src/lib/components/LLMChat.svelte -->
 <script lang="ts">
-	import { post, isApiError, type ApiError } from '$lib/apiClient';
+	import { get, post, isApiError, type ApiError } from '#lib/apiClient.js';
 	import { onMount, tick } from 'svelte'; // Import tick for scrolling
 
 	// --- Types (Mirroring backend models - ideally move to types.ts) ---
@@ -59,6 +59,19 @@
     let useStreaming: boolean = true; // Default to streaming
 
     let chatContainerElement: HTMLElement; // For auto-scrolling
+
+    // GGUF files found in the llm model folder (download more in the Models tab)
+    let availableLlms: string[] = [];
+    onMount(async () => {
+        try {
+            availableLlms = await get<string[]>('/system/models/llm');
+            if (availableLlms.length && !availableLlms.includes(llmConfig.model_id)) {
+                llmConfig.model_id = availableLlms[0];
+            }
+        } catch (e) {
+            console.warn('Could not list LLM models', e);
+        }
+    });
 
     // Function to add a message and scroll down
     async function addMessage(message: ChatMessage) {
@@ -235,7 +248,13 @@
         <div class="mt-4 space-y-3">
             <div>
                 <label for="llm_model_id" class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Model Filename:</label>
-			    <input type="text" id="llm_model_id" bind:value={llmConfig.model_id} required class="w-full px-2 py-1 border text-xs border-gray-300 rounded shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+			    <input type="text" id="llm_model_id" list="llm_model_options" bind:value={llmConfig.model_id} required class="w-full px-2 py-1 border text-xs border-gray-300 rounded shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                <datalist id="llm_model_options">
+                    {#each availableLlms as name (name)}<option value={name}></option>{/each}
+                </datalist>
+                {#if availableLlms.length === 0}
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">No GGUF models found. Download one in the Models tab (LLM filter).</p>
+                {/if}
             </div>
             <div class="grid grid-cols-2 gap-3">
                  <div>

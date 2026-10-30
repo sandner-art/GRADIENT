@@ -1,124 +1,46 @@
 # gradient-project-root/Makefile
+# Thin wrappers around install.sh / uv / npm. Run `make help`.
 
-.PHONY: help setup install dev-install run lint format test clean docs freeze
+.PHONY: help install dev-install run dev frontend frontend-dev test test-frontend lint format check clean
 
-# --- Configuration ---
-VENV_DIR := venv
-PYTHON_EXECUTABLE ?= python3 # Use python3 by default, can be overridden (e.g., PYTHON_EXECUTABLE=python3.10)
+VENV := .venv
+BIN := $(VENV)/bin
 
-# Check if venv directory exists
-VENV_EXISTS := $(shell test -d $(VENV_DIR) && echo 1 || echo 0)
-
-# Define Python/Pip executables based on OS and venv existence
-ifeq ($(OS),Windows_NT)
-	PYTHON := $(VENV_DIR)/Scripts/python
-	PIP := $(VENV_DIR)/Scripts/pip
-	ACTIVATE := $(VENV_DIR)/Scripts/activate
-else
-	PYTHON := $(VENV_DIR)/bin/python
-	PIP := $(VENV_DIR)/bin/pip
-	ACTIVATE := source $(VENV_DIR)/bin/activate
-endif
-
-# Detect Poetry
-POETRY := $(shell command -v poetry 2> /dev/null)
-
-# Helper message if venv doesn't exist
-define VENV_MISSING_MSG
-@echo "Virtual environment '$(VENV_DIR)' not found."
-@echo "Please run 'make setup' first."
-endef
-
-help: ## Display this help message
-	@echo "Usage: make [target]"
-	@echo ""
-	@echo "Targets:"
+help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-# --- Setup & Installation ---
-setup: $(VENV_DIR)/pyvenv.cfg ## Create the Python virtual environment
-	@echo "Virtual environment setup complete in $(VENV_DIR)/"
+install: ## Install GRADIENT (GPU auto-detected) and build the UI
+	./install.sh
 
-$(VENV_DIR)/pyvenv.cfg:
-	@echo "Creating Python virtual environment using $(PYTHON_EXECUTABLE)..."
-	$(PYTHON_EXECUTABLE) -m venv $(VENV_DIR)
+dev-install: ## Install with test/lint tools
+	./install.sh --dev
 
-install: setup ## Install production dependencies into the venv
-	@echo "Installing production dependencies..."
-ifdef POETRY
-	$(POETRY) install --no-dev --no-interaction --no-ansi --no-root
-else
-	$(PIP) install -r requirements.txt
-endif
+run: ## Start API + UI on http://127.0.0.1:8000
+	$(BIN)/gradient serve
 
-dev-install: setup ## Install all dependencies including dev into the venv
-	@echo "Installing development dependencies..."
-ifdef POETRY
-	$(POETRY) install --no-interaction --no-ansi
-else
-	$(PIP) install -e ".[dev]"
-endif
-	@echo "Use 'source $(VENV_DIR)/bin/activate' (Linux/macOS) or '.\\$(VENV_DIR)\\Scripts\\activate' (Windows) to activate."
+dev: ## Start the API with auto-reload (use with `make frontend-dev`)
+	$(BIN)/gradient serve --reload
 
+frontend: ## Build the web UI into frontend/build
+	cd frontend && npm ci && npm run build
 
-# --- Development ---
-# Note: These targets assume the venv is active OR they prepend the venv path.
-# Running directly via venv path is more robust for Makefile usage.
-run: ## Run the GRADIENT server with Uvicorn inside the venv
-ifeq ($(VENV_EXISTS), 1)
-	$(PYTHON) main.py
-else
-	$(VENV_MISSING_MSG)
-endif
+frontend-dev: ## Vite dev server on :5173 (proxies /api to :8000)
+	cd frontend && npm run dev
 
-lint: ## Run Ruff linter inside the venv
-ifeq ($(VENV_EXISTS), 1)
-	$(PYTHON) -m ruff check src tests *.py
-else
-	$(VENV_MISSING_MSG)
-endif
+test: ## Backend tests (offline, CPU)
+	$(BIN)/python -m pytest
 
-format: ## Run Ruff formatter inside the venv
-ifeq ($(VENV_EXISTS), 1)
-	$(PYTHON) -m ruff format src tests *.py
-else
-	$(VENV_MISSING_MSG)
-endif
+test-frontend: ## Frontend type check + unit tests
+	cd frontend && npm run check && npm test
 
-test: ## Run pytest tests inside the venv
-ifeq ($(VENV_EXISTS), 1)
-	$(PYTHON) -m pytest
-else
-	$(VENV_MISSING_MSG)
-endif
+lint: ## Ruff lint + format check
+	$(BIN)/ruff check . && $(BIN)/ruff format --check .
 
-# --- Cleanup ---
-clean-pyc: ## Remove Python bytecode files
-	find . -type f -name "*.py[co]" -delete
-	find . -type d -name "__pycache__" -exec rm -rf {} +
+format: ## Format Python code
+	$(BIN)/ruff format . && $(BIN)/ruff check --fix .
 
-clean-build: ## Remove build artifacts
-	rm -rf build/ dist/ .eggs/ *.egg-info/
+check: lint test test-frontend ## Everything CI runs
 
-clean-test: ## Remove test artifacts
-	rm -rf .pytest_cache/ htmlcov/ .coverage
-
-clean-venv: ## Remove the virtual environment directory
-	rm -rf $(VENV_DIR)
-
-clean: clean-pyc clean-build clean-test ## Run all clean targets (excluding venv)
-	@echo "Cleaned Python artifacts, build files, and test cache."
-
-# --- Utility ---
-freeze: ## Generate requirements.txt from current environment (useful if not using Poetry)
-ifeq ($(VENV_EXISTS), 1)
-ifdef POETRY
-	$(POETRY) export --without-hashes -f requirements.txt --output requirements.txt
-	$(POETRY) export --without-hashes -f requirements.txt --output requirements-dev.txt --with dev
-else
-	$(PIP) freeze > requirements.txt
-endif
-	@echo "requirements.txt generated from venv."
-else
-	$(VENV_MISSING_MSG)
-endif
+clean: ## Remove caches and build output (keeps .venv, models and data)
+	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	rm -rf .pytest_cache .ruff_cache frontend/build frontend/.svelte-kit frontend/storybook-static

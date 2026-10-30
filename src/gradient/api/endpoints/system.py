@@ -1,111 +1,122 @@
-# src/gradient/api/endpoints/system.py (NEW FILE)
+# src/gradient/api/endpoints/system.py
 
-import logging
-from fastapi import APIRouter, HTTPException
-from pathlib import Path
-from typing import List, Dict, Any
-import pkg_resources # To inspect installed packages like diffusers
 import importlib
+import logging
+from importlib.metadata import PackageNotFoundError, version
 
-from gradient.core.config import get_setting, PROJECT_ROOT
-from diffusers.schedulers.scheduling_utils import SchedulerMixin # Base class for check
+from fastapi import APIRouter, Query
+
+from gradient.ai.diffusion import loading
+from gradient.core.device import device_summary
+from gradient.core.resource_manager import resource_manager
+from gradient.core.scheduling import gpu_queue_depth, progress_tracker, run_gpu_task
+from gradient.model_manager.inventory import list_model_names
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- Helper to scan model directories ---
-def scan_model_directory(model_type: str) -> List[str]:
-    """Scans configured search paths for models of a specific type."""
-    found_models = set()
-    search_dirs_config = get_setting("paths.models.search_dirs", ["./data/models"])
-    subdir_name = get_setting(f"paths.models.{model_type}", model_type)
+_PACKAGES = (
+    "torch",
+    "diffusers",
+    "transformers",
+    "huggingface_hub",
+    "accelerate",
+    "peft",
+    "fastapi",
+    "llama_cpp_python",
+)
 
-    for dir_str in search_dirs_config:
-        base_dir = Path(dir_str)
-        if not base_dir.is_absolute():
-            base_dir = (PROJECT_ROOT / base_dir).resolve()
 
-        model_subdir = base_dir / subdir_name
-        if model_subdir.is_dir():
-            try:
-                for item in model_subdir.iterdir():
-                    # For diffusers, add directories.
-                    if model_type == "diffusers":
-                        if item.is_dir():
-                            found_models.add(item.name) # Add folder name
-                    # --- MODIFIED FOR LoRA --- VVV
-                    elif model_type == "lora":
-                        # Add PEFT LoRA directories (must contain adapter_config.json)
-                        if item.is_dir() and (item / "adapter_config.json").is_file():
-                            found_models.add(item.name) # Add folder name
-                        # Add single LoRA files
-                        elif item.is_file() and item.suffix.lower() in ['.pt', '.pth', '.safetensors', '.ckpt']:
-                             found_models.add(item.name) # Add file name
-                    # --- MODIFIED FOR LoRA --- ^^^
-                    elif model_type in ["checkpoints", "vae", "embeddings", "controlnet", "llm"]:
-                         # Add files with common extensions
-                         if item.is_file() and item.suffix.lower() in ['.pt', '.pth', '.safetensors', '.ckpt', '.bin', '.gguf']:
-                             found_models.add(item.name) # Add file name
-                         # VAEs can also be folders (often full diffusers models)
-                         # Let's ensure VAE directories are also captured if they are not already by a diffusers-like check
-                         elif model_type == "vae" and item.is_dir() and (item / "config.json").is_file(): # A simple check for a diffusers-like structure
-                             found_models.add(item.name)
-            except FileNotFoundError:
-                logger.warning(f"Model subdirectory not found or inaccessible: {model_subdir}")
-            except OSError as e:
-                 logger.error(f"Error scanning directory {model_subdir}: {e}")
-
-    return sorted(list(found_models))
-
-# --- API Endpoints ---
-
-@router.get("/system/models/diffusion", response_model=List[str], tags=["System Info"])
-async def get_diffusion_models():
-    """Lists diffusion models (checkpoints & diffusers) found in configured directories."""
-    checkpoints = scan_model_directory("checkpoints")
-    diffusers_models = scan_model_directory("diffusers")
-    all_models = sorted(list(set(checkpoints + diffusers_models)))
-    logger.info(f"Found diffusion models: {all_models}")
-    return all_models
-
-@router.get("/system/models/loras", response_model=List[str], tags=["System Info"])
-async def get_loras():
-    """Lists LoRA models (single files and PEFT directories) found in the configured directory."""
-    loras = scan_model_directory("lora")
-    logger.info(f"Found LoRAs: {loras}")
-    return loras
-
-@router.get("/system/models/embeddings", response_model=List[str], tags=["System Info"])
-async def get_embeddings():
-    """Lists Textual Inversion embeddings found in the configured directory."""
-    embeddings = scan_model_directory("embeddings")
-    logger.info(f"Found Embeddings: {embeddings}")
-    return embeddings
-
-@router.get("/system/schedulers", response_model=List[str], tags=["System Info"])
-async def get_schedulers():
-    """Lists available schedulers discoverable within the diffusers library."""
-    schedulers = ["Default"]
+def _pkg_version(name: str) -> str | None:
     try:
-        schedulers_module = importlib.import_module("diffusers.schedulers")
-        for attr_name in dir(schedulers_module):
-            if attr_name.endswith("Scheduler"):
-                try:
-                    attr = getattr(schedulers_module, attr_name)
-                    if isinstance(attr, type) and issubclass(attr, SchedulerMixin) and attr is not SchedulerMixin:
-                        schedulers.append(attr_name)
-                except Exception:
-                    continue
-        schedulers = sorted(list(set(schedulers)))
-        logger.info(f"Discovered schedulers: {schedulers}")
-    except Exception as e:
-        logger.error(f"Could not dynamically discover schedulers: {e}", exc_info=True)
-        schedulers = [
-            "Default", "DDIMScheduler", "DDPMScheduler", "DEISMultistepScheduler",
-            "DPMSolverMultistepScheduler", "DPMSolverSinglestepScheduler",
-            "EulerAncestralDiscreteScheduler", "EulerDiscreteScheduler",
-            "HeunDiscreteScheduler", "IPNDMScheduler", "KDPM2AncestralDiscreteScheduler",
-            "KDPM2DiscreteScheduler", "LCMScheduler", "LMSDiscreteScheduler",
-            "PNDMScheduler", "UniPCMultistepScheduler"
-        ]
-    return schedulers
+        return version(name.replace("_", "-"))
+    except PackageNotFoundError:
+        return None
+
+
+# --- Model lists (names usable as model_id / lora name etc.) ---
+@router.get("/system/models/diffusion", response_model=list[str], tags=["System Info"])
+async def get_diffusion_models():
+    """Diffusion models (diffusers folders and single-file checkpoints) in the model folders."""
+    return sorted(set(list_model_names("diffusers")) | set(list_model_names("checkpoints")))
+
+
+@router.get("/system/models/loras", response_model=list[str], tags=["System Info"])
+async def get_loras():
+    return list_model_names("lora")
+
+
+@router.get("/system/models/embeddings", response_model=list[str], tags=["System Info"])
+async def get_embeddings():
+    return list_model_names("embeddings")
+
+
+@router.get("/system/models/vae", response_model=list[str], tags=["System Info"])
+async def get_vaes():
+    return list_model_names("vae")
+
+
+@router.get("/system/models/controlnet", response_model=list[str], tags=["System Info"])
+async def get_controlnets():
+    return list_model_names("controlnet")
+
+
+@router.get("/system/models/llm", response_model=list[str], tags=["System Info"])
+async def get_llms():
+    return [n for n in list_model_names("llm") if n.lower().endswith(".gguf")]
+
+
+# --- Schedulers ---
+@router.get("/system/schedulers", response_model=list[str], tags=["System Info"])
+async def get_schedulers(
+    model_id: str | None = Query(
+        None, description="Only list schedulers compatible with this loaded model"
+    ),
+):
+    """Schedulers from diffusers. With model_id (of a loaded model) only compatible ones are listed."""
+    if model_id:
+        from gradient.ai.diffusion.pipelines import compatible_schedulers
+
+        for entry in loading.loaded_pipelines.values():
+            if entry.model_id == model_id:
+                return ["Default", *compatible_schedulers(entry)]
+    from diffusers.schedulers.scheduling_utils import SchedulerMixin
+
+    module = importlib.import_module("diffusers.schedulers")
+    names = set()
+    for attr in dir(module):
+        if not attr.endswith("Scheduler"):
+            continue
+        try:
+            obj = getattr(module, attr)
+        except Exception:
+            continue
+        if isinstance(obj, type) and issubclass(obj, SchedulerMixin) and obj is not SchedulerMixin:
+            names.add(attr)
+    return ["Default", *sorted(names)]
+
+
+# --- Runtime info ---
+@router.get("/system/info", tags=["System Info"])
+async def get_system_info():
+    """Device, library versions and loaded models."""
+    return {
+        "device": device_summary(),
+        "versions": {p: _pkg_version(p) for p in _PACKAGES},
+        "loaded_pipelines": loading.loaded_summary(),
+        "resources": resource_manager.snapshot(),
+    }
+
+
+@router.get("/system/status", tags=["System Info"])
+async def get_runtime_status():
+    """Current generation progress and queue depth (cheap; poll while generating)."""
+    return {"queue_depth": gpu_queue_depth(), "current": progress_tracker.snapshot()}
+
+
+@router.post("/system/unload", tags=["System Info"])
+async def unload_models():
+    """Unload all cached diffusion pipelines and free VRAM."""
+    count = len(loading.loaded_pipelines)
+    await run_gpu_task(loading.unload_all_pipelines)
+    return {"unloaded": count}

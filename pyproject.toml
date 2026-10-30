@@ -1,79 +1,109 @@
 # gradient-project-root/pyproject.toml
+#
+# Standard PEP 621 metadata: works with uv, pip, and Poetry >= 2.
+#
+# PyTorch note: `torch` is listed without an index URL on purpose. The installer
+# scripts (install.sh / install.ps1) pick the right build for your hardware
+# (CUDA 13.x, ROCm, Apple MPS or CPU) before installing this package.
+# See README.md -> "Installation" for manual instructions.
 
-[tool.poetry]
+[project]
 name = "gradient-workbench"
-version = "0.1.0"
+version = "0.2.0"
 description = "GRADIENT: Generative Research & Architectural Diffusion Interactive Exploration Navigation Toolkit"
-authors = ["Daniel Sandner <news@sandner.art>"] # Replace with actual email
+authors = [{ name = "Daniel Sandner", email = "news@sandner.art" }]
 license = "Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/sandner-art/gradient" # Replace with actual repo URL
-documentation = "https://github.com/sandner-art/gradient/wiki" # Replace if docs hosted elsewhere
-packages = [
-    { include = "gradient", from = "src" },
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Artistic Software",
+]
+dependencies = [
+    # --- Web/API ---
+    "fastapi>=0.162",
+    "uvicorn[standard]>=0.54",
+    "pydantic>=2.14",
+    "pyyaml>=6.0.3",
+    "python-dotenv>=1.2",
+    "httpx>=0.28",
+    # --- AI core ---
+    "torch>=2.14",
+    "diffusers>=0.42.1",
+    "transformers>=5.22",
+    "accelerate>=1.15",
+    "peft>=0.21",
+    "huggingface_hub>=2.4",
+    "safetensors>=0.8",
+    "sentencepiece>=0.2",   # T5 tokenizers (SD3, FLUX)
+    "protobuf>=6",
+    "pillow>=12",
+    # --- Research / viz ---
+    "numpy>=2.3",
+    "scikit-learn>=1.9",
+    "umap-learn>=0.5.12",
+    # --- Persistence ---
+    "sqlalchemy[asyncio]>=2.1",
+    "aiosqlite>=0.22",
+    "alembic>=1.20",
 ]
 
-# --- Define PyTorch CUDA 12.1 Source --- vvv
-[[tool.poetry.source]]
-name = "pytorch_cu121"
-url = "https://download.pytorch.org/whl/cu121"
-priority = "explicit"
-# --- Define PyTorch CUDA 12.1 Source --- ^^^
+[project.optional-dependencies]
+# Local GGUF chat models. Prebuilt GPU wheels: see README ("LLM support").
+llm = ["llama-cpp-python>=0.3.36"]
+# Optional quantization backends for large DiT models (FLUX, SD3.5, Qwen-Image) on smaller GPUs.
+quant = [
+    "bitsandbytes>=0.50; sys_platform != 'darwin'",
+    "torchao>=0.18",
+    "gguf>=0.19",
+]
+dev = [
+    "pytest>=9",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.17",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-fastapi = "^0.111.0"
-uvicorn = {extras = ["standard"], version = "^0.30.0"}
-pydantic = "^2.7.0"
-PyYAML = "^6.0"
-python-dotenv = "^1.0.0"
+[project.scripts]
+gradient = "gradient.cli:main"
 
-# --- Add AI Core Libraries --- vvv
-torch = { version = "~2.5.0", source = "pytorch_cu121" } # Allows >=2.5.0, <2.6.0 from cu121 source
-torchvision = { version = "~0.20.0", source = "pytorch_cu121" } # Allows >=0.20.0, <0.21.0 from cu121 source
-torchaudio = { version = "~2.5.0", source = "pytorch_cu121" } # Allows >=2.5.0, <2.6.0 from cu121 source
-diffusers = "^0.33.1"
-transformers = "^4.41.0" # Diffusers often depends on this
-llama-cpp-python = "^0.2.79" # Check for latest compatible version
-# --- Add AI Core Libraries --- ^^^
-umap-learn = "^0.5.7"
-numpy = "^2.2.5"
-scikit-learn = "^1.6.1"
-sqlalchemy = "^2.0.40"
-alembic = "^1.15.2"
-greenlet = "^3.2.1"
-aiosqlite = "^0.21.0"
-peft = "^0.15.2"
-accelerate = "^1.6.0"
-
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-ruff = "^0.5.0"
-httpx = "^0.27.0"
+[project.urls]
+Repository = "https://github.com/sandner-art/gradient"
+Documentation = "https://github.com/sandner-art/gradient/tree/main/docs"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=2.0"]
 build-backend = "poetry.core.masonry.api"
 
-# Tool Configurations
+[tool.poetry]
+packages = [{ include = "gradient", from = "src" }]
+
+# --- Tool configuration ---
 [tool.ruff]
-line-length = 88
-select = ["E", "W", "F", "I", "UP", "B", "C4", "ASYNC"] # Select rules (Error, Warning, Pyflakes, isort, pyupgrade, flake8-bugbear, flake8-comprehensions, flake8-async)
-ignore = ["E501"] # Ignore line length errors (handled by formatter)
+line-length = 100
+target-version = "py311"
+extend-exclude = ["frontend", "scripts/legacy", "docs", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "ASYNC"]
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "E701",   # legacy code uses compact one-line statements
+    "E702",
+    "B008",   # FastAPI Depends()/Body() in defaults is idiomatic
+]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
-minversion = "6.0"
+minversion = "8.0"
 addopts = "-ra -q"
-testpaths = [
-    "tests",
-]
-pythonpath = ["src"] # Add src to PYTHONPATH for tests
-
-# Optional: Define scripts if needed (e.g., for CLI)
-# [tool.poetry.scripts]
-# gradient = "gradient.__main__:app" # Example if using Typer/Click in __main__.py
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

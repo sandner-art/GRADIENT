@@ -120,3 +120,84 @@ export interface ImageToImageResponse {
 
 
 // Add other types (LLM, Sensitivity etc.) here as needed
+// --- Model manager (src/gradient/model_manager/schemas.py) --- vvv
+export type ModelType = 'diffusers' | 'checkpoints' | 'vae' | 'lora' | 'controlnet' | 'embeddings' | 'llm';
+export type JobStatus = 'queued' | 'resolving' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+
+export interface GenerationDefaults {
+	width?: number | null;
+	height?: number | null;
+	steps?: number | null;
+	guidance_scale?: number | null;
+	scheduler?: string | null;
+}
+
+export interface CatalogEntry {
+	id: string;
+	name: string;
+	type: ModelType;
+	family?: string | null;
+	repo_id?: string | null;
+	files?: string[] | null;
+	gated: boolean;
+	license?: string | null;
+	size_gb?: number | null;
+	min_vram_gb?: number | null;
+	pipeline?: string | null;
+	base_model_family?: string | null;
+	defaults?: GenerationDefaults | null;
+	tags: string[];
+	description?: string | null;
+	homepage?: string | null;
+	notes?: string | null;
+	installed: boolean;
+	installed_path?: string | null;
+}
+
+export interface LocalModel {
+	name: string;
+	type: ModelType;
+	format: 'diffusers' | 'single_file' | 'peft' | 'gguf' | 'directory';
+	path: string;
+	size_bytes: number;
+	family?: string | null;
+	pipeline?: string | null;
+	source?: Record<string, string> | null;
+	defaults?: GenerationDefaults | null;
+}
+
+export interface DownloadRequest {
+	catalog_id?: string;
+	repo_id?: string;
+	url?: string;
+	model_type?: ModelType | null;
+	files?: string[] | null;
+	target_name?: string | null;
+	token?: string | null;
+}
+
+export interface DownloadJob {
+	id: string;
+	status: JobStatus;
+	name: string;
+	model_type?: ModelType | null;
+	source: string;
+	target_path?: string | null;
+	total_bytes?: number | null;
+	downloaded_bytes: number;
+	speed_bps: number;
+	progress?: number | null;
+	error?: string | null;
+	error_code?: string | null;
+	catalog_id?: string | null;
+	created_at: string;
+	finished_at?: string | null;
+}
+
+export interface StorageInfo {
+	search_dirs: { path: string; exists: boolean; free_gb?: number; total_gb?: number }[];
+	download_dir: string;
+	hf_token_configured: boolean;
+	civitai_token_configured: boolean;
+}
+// --- Model manager --- ^^^

@@ -1,6 +1,6 @@
 <!-- frontend/src/lib/components/XYZGridDisplay.svelte -->
 <script lang="ts">
-	import type { XYZGridResponse, XYZGridResult, AxisParameter } from '$lib/types';
+	import type { XYZGridResponse, XYZGridResult, AxisParameter } from '#lib/types.js';
 	import { createEventDispatcher } from 'svelte';
 
 	export let gridResponse: XYZGridResponse | null = null;

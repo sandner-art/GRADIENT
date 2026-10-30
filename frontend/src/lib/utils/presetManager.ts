@@ -1,6 +1,6 @@
 // frontend/src/lib/utils/presetManager.ts
-import { get, post, isApiError, type ApiError } from '$lib/apiClient'; // Import isApiError and ApiError type
-import type { PresetRead, PresetCreate, PresetSetting, DiffusionTaskBase } from '$lib/types';
+import { get, post, isApiError, type ApiError } from '#lib/apiClient.js'; // Import isApiError and ApiError type
+import type { PresetRead, PresetCreate, PresetSetting, DiffusionTaskBase } from '#lib/types.js';
 import type { Writable } from 'svelte/store'; // Import Writable type for store parameter
 
 /**

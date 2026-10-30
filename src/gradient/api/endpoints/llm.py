@@ -1,17 +1,19 @@
 # gradient-project-root/src/gradient/api/endpoints/llm.py (NEW FILE)
 
 import logging
-import json
-from fastapi import APIRouter, HTTPException, Body, Depends
-from fastapi.responses import StreamingResponse # For SSE streaming
-from typing import Generator, AsyncGenerator
+from collections.abc import AsyncGenerator
+
+from fastapi import APIRouter, Body, HTTPException
+from fastapi.responses import StreamingResponse  # For SSE streaming
+
+from gradient.ai.llm.interaction import run_chat_completion, run_chat_completion_stream
 
 # Import models and interaction functions
 from gradient.ai.llm.models import ChatCompletionRequest, ChatCompletionResponse
-from gradient.ai.llm.interaction import run_chat_completion, run_chat_completion_stream
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
 
 @router.post(
     "/chat/completions",
@@ -19,16 +21,16 @@ logger = logging.getLogger(__name__)
     # For now, specify non-streaming response, handle stream separately
     response_model=ChatCompletionResponse,
     summary="Create a chat completion using a GGUF model",
-    tags=["LLM"]
+    tags=["LLM"],
 )
-async def handle_chat_completion(
-    request: ChatCompletionRequest = Body(...)
-):
+async def handle_chat_completion(request: ChatCompletionRequest = Body(...)):
     """
     Processes a list of chat messages and returns a model-generated completion.
     Supports both streaming and non-streaming responses based on the `stream` flag.
     """
-    logger.info(f"Received LLM chat request: model={request.llm_config.model_id}, stream={request.stream}")
+    logger.info(
+        f"Received LLM chat request: model={request.llm_config.model_id}, stream={request.stream}"
+    )
 
     if request.stream:
         # --- Handle Streaming Response ---
@@ -41,12 +43,13 @@ async def handle_chat_completion(
                     yield f"data: {chunk_json}\n\n"
                 # Signal stream end (optional, depends on client handling)
                 # yield "data: [DONE]\n\n"
+
             return StreamingResponse(event_stream(), media_type="text/event-stream")
 
         except Exception as e:
             # Log error that happened *before* streaming started (e.g., model load fail)
             logger.exception(f"Error setting up chat stream: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to start stream: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to start stream: {e}") from e
 
     else:
         # --- Handle Non-Streaming Response ---
@@ -58,8 +61,12 @@ async def handle_chat_completion(
                 raise HTTPException(status_code=500, detail="Chat completion failed internally.")
             return result
         except MemoryError as e:
-             logger.error(f"Out of memory error during chat completion: {e}", exc_info=True)
-             raise HTTPException(status_code=507, detail=f"Insufficient memory for completion: {e}")
+            logger.error(f"Out of memory error during chat completion: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=507, detail=f"Insufficient memory for completion: {e}"
+            ) from e
         except Exception as e:
-            logger.exception(f"Unexpected error during chat completion API call: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+            logger.exception(
+                f"Unexpected error during chat completion API call: {e}", exc_info=True
+            )
+            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}") from e

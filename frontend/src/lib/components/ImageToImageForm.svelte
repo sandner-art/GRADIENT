@@ -1,17 +1,18 @@
 <!-- frontend/src/lib/components/ImageToImageForm.svelte -->
 <script lang="ts">
 	// --- Imports ---
-	import { get, post, isApiError, type ApiError } from '$lib/apiClient';
-	import type { ImageToImageRequest, ImageToImageResponse, ImageResult, PresetRead, PresetSetting, PresetCreate } from '$lib/types';
-	import { i2iFormStore } from '$lib/stores/i2iFormStore'; // Correct store
+	import { get, post, isApiError, type ApiError } from '#lib/apiClient.js';
+	import type { ImageToImageRequest, ImageToImageResponse, ImageResult, PresetRead, PresetSetting, PresetCreate } from '#lib/types.js';
+	import { i2iFormStore } from '#lib/stores/i2iFormStore.js'; // Correct store
 	import { onMount, onDestroy, beforeUpdate, createEventDispatcher } from 'svelte';
     // Shared Components
 	import ModelSelector from './shared/ModelSelector.svelte';
 	import SchedulerSelector from './shared/SchedulerSelector.svelte';
 	import SeedInput from './shared/SeedInput.svelte';
 	import SubmitButton from './shared/SubmitButton.svelte';
+	import RecommendedSettings from './shared/RecommendedSettings.svelte';
     // Utils
-    import { fetchPresetsForModel, applyPresetToStore, savePresetFromStore } from '$lib/utils/presetManager';
+    import { fetchPresetsForModel, applyPresetToStore, savePresetFromStore } from '#lib/utils/presetManager.js';
 
     // --- Dispatcher ---
     const dispatch = createEventDispatcher<{success: ImageResult[]}>();
@@ -46,10 +47,10 @@
         if (isFetchingSystemInfo) return; isFetchingSystemInfo = true;
         try {
             const [models, schedulers, loras, embeddings] = await Promise.all([
-                get<string[]>('/system/models/diffusion').catch(e => { console.error("Fetch models error:", e); return []; }),
-                get<string[]>('/system/schedulers').catch(e => { console.error("Fetch schedulers error:", e); return ['Default']; }),
-                get<string[]>('/system/models/loras').catch(e => { console.error("Fetch loras error:", e); return []; }),
-                get<string[]>('/system/models/embeddings').catch(e => { console.error("Fetch embeddings error:", e); return []; })
+                get<string[]>('/system/models/diffusion').catch((e): string[] => { console.error("Fetch models error:", e); return []; }),
+                get<string[]>('/system/schedulers').catch((e): string[] => { console.error("Fetch schedulers error:", e); return ['Default']; }),
+                get<string[]>('/system/models/loras').catch((e): string[] => { console.error("Fetch loras error:", e); return []; }),
+                get<string[]>('/system/models/embeddings').catch((e): string[] => { console.error("Fetch embeddings error:", e); return []; })
             ]);
             availableModels = models; availableSchedulers = ['Default', ...schedulers.filter(s => s !== 'Default')];
             availableLoras = loras; availableEmbeddings = embeddings;
@@ -83,7 +84,7 @@
          if (idToFind === null || isNaN(idToFind)) { return; }
          const preset = availablePresets.find(p => p.id === idToFind);
          // Apply to the i2i store
-         applyPresetToStore(preset, i2iFormStore); // Pass correct store
+         applyPresetToStore(preset ?? null, i2iFormStore); // Pass correct store
          if (!preset) { console.warn("Preset with ID " + idToFind + " not found."); }
     }
     async function handleSavePreset(): Promise<void> {
@@ -233,6 +234,18 @@
 
 		<!-- USE SHARED ModelSelector -->
 		<ModelSelector id="model_id_i2i" label="Model ID:" availableModels={availableModels} selectedModelId={$i2iFormStore.model_id} on:change={(e) => i2iFormStore.update(s => ({ ...s, model_id: e.detail }))} disabled={isFetchingSystemInfo} />
+
+		<RecommendedSettings
+			modelId={$i2iFormStore.model_id}
+			onapply={(d) => i2iFormStore.update((s) => ({
+				...s,
+				width: d.width ?? s.width,
+				height: d.height ?? s.height,
+				num_inference_steps: d.steps ?? s.num_inference_steps,
+				guidance_scale: d.guidance_scale ?? s.guidance_scale,
+				scheduler_id: d.scheduler ?? s.scheduler_id
+			}))}
+		/>
 
         <!-- Preset Selector -->
         <div>

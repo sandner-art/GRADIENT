@@ -1,8 +1,7 @@
 # GRADIENT: Generative Research Lab
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/sandner-art/gradient) <!-- Placeholder -->
-[![Docs Status](https://img.shields.io/badge/docs-in%20progress-orange.svg)](https://github.com/sandner-art/gradient/wiki) <!-- Placeholder -->
+[![CI](https://github.com/sandner-art/gradient/actions/workflows/python-app.yml/badge.svg)](https://github.com/sandner-art/gradient/actions/workflows/python-app.yml)
 
 **Author:** Daniel Sandner
 
@@ -21,83 +20,132 @@ While powerful, existing generative AI tools often present fragmented workflows,
 3.  **Reproducible Research:** Integrating tools for systematic evaluation, logging, and analysis.
 4.  **Structural Creativity:** Offering capabilities to manipulate the generative process itself for unique artistic outcomes.
 
-## Key Features
+## What works today (v0.2.0)
 
-*   **Interactive Latent Space Navigator:** Visualize and interact with model latent spaces (UMAP/t-SNE) for exploration, analysis, and novel generation techniques.
-*   **Structural Diffusion Modulation:** Directly influence diffusion dynamics (e.g., noise schedules, guidance vectors, UNet layer weighting) via UI controls.
-*   **Parameter Sensitivity Visualization:** Estimate the spatial impact of parameter changes (e.g., CFG, LoRA weight) using gradient-based or empirical methods.
-*   **Advanced Model/Adapter Handling:** Unified support for SD 1.5/XL, Flux.1, LoRAs, PEFT, VAEs, ControlNets, etc.
-*   **Dynamic Prompt Weaving:** Inject or modify prompts/embeddings mid-generation, integrating ELLA principles.
-*   **Agentic Art Director:** Utilize LLM agents for autonomous experimentation and batch generation based on high-level goals.
-*   **Research Toolkit:** Native XYZ+ grids, automated experiment logging (parameters, outputs, metadata), integrated data plotting, and potential Jupyter Notebook export.
-*   **Visualization Suite:** Live diffusion process visualization, semantic labeling of latent space, prompt-based highlighting.
-*   **Advanced Workflows:** Cross-model/seed latent grafting, robust prompt/workflow management.
-*   **API Access:** Allow external control and integration via a documented Python API.
-*   **Modular Architecture:** Built for extensibility and maintainability.
+*   **Any diffusers model family:** SD 1.5, SDXL, SD 3.5, FLUX.1, FLUX.2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2 and more (diffusers folders, Hub repos, and SD/SDXL/SD3/FLUX single-file checkpoints).
+*   **Built-in Model Manager:** a verified catalog of base models, LoRAs, VAEs, ControlNets and GGUF LLMs; one-click downloads from Hugging Face, any repo/file link, or direct URLs (e.g. Civitai), with progress, cancel and resume. Also on the command line.
+*   **Text-to-image, image-to-image, XYZ grids** with presets, LoRAs, embeddings, scheduler choice, **custom sigma schedules** and **scheduled CFG** (`linear(9,3)`, keyframes `9@0,4@20`).
+*   **Reproducibility:** every image is generated with its own seeded generator, saved with full parameters in PNG metadata and logged to a local SQLite experiment database.
+*   **Parameter sensitivity maps** (where in the image does CFG or a LoRA weight matter?) by central finite differences.
+*   **Memory modes** for small GPUs: full GPU, model offload, group offload with CUDA streams, sequential offload, picked automatically from model size and free VRAM.
+*   **Local LLM chat** (GGUF via llama.cpp) for prompt work.
 
-## Visuals
-
-*(Placeholder: Screenshots/GIFs demonstrating the Latent Space Navigator, Structural Modulation UI, Sensitivity Heatmaps, and overall interface will be added here.)*
+Planned research features (latent-space navigator, structural modulation timeline, attention/token attribution, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
 
 ## Installation
 
-GRADIENT is designed to run locally. Prerequisites include Python 3.10+, PyTorch (with CUDA support recommended), and Git.
+Requirements: **Python 3.11–3.13**, **Node.js ≥ 22.17** (to build the web UI), git. An NVIDIA GPU is recommended; Apple Silicon and CPU also work (slowly for large models).
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/sandner-art/gradient.git
 cd gradient
-
-# 2. Create and activate a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-
-# 3. Install core dependencies
-pip install -r requirements.txt
-
-# 4. Install PyTorch with CUDA support (example - adapt for your system)
-# See: https://pytorch.org/get-started/locally/
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# 5. Build llama-cpp-python (if using GGUF models with GPU)
-# CMAKE_ARGS="-DLLAMA_CUBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python --no-cache-dir
-# (See llama-cpp-python documentation for details and prerequisites)
-
-# 6. Download models (Stable Diffusion checkpoints, VAEs, GGUF files, etc.)
-# Place them in the appropriate './models' subdirectories (create if needed).
+./install.sh                # Linux / macOS
 ```
 
-*(Detailed dependency installation, especially for CUDA and llama.cpp, may require additional system-specific steps.)*
+On Windows (PowerShell):
 
-## Hardware-Specific PyTorch Builds
+```powershell
+git clone https://github.com/sandner-art/gradient.git
+cd gradient
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
 
-GRADIENT is configured by default to install PyTorch with CUDA 12.1 support, suitable for NVIDIA GPUs like the RTX 30x0/40x0 series and newer cards supporting CUDA 12.x.
+The installer:
 
-If you have **different hardware**, you will need to manually install the correct PyTorch build *after* running `poetry install`:
+1. installs [uv](https://docs.astral.sh/uv/) if needed and creates `.venv` (Python 3.12),
+2. detects your hardware and installs the matching PyTorch build,
+3. installs GRADIENT (`pip install -e .`),
+4. builds the web UI (if Node.js is available).
 
-1.  **Activate the virtual environment:** `source venv/bin/activate` (or `.\venv\Scripts\activate` on Windows).
-2.  **Uninstall the default torch:** `pip uninstall torch torchvision torchaudio -y`
-3.  **Find your build:** Go to the [PyTorch Get Started page](https://pytorch.org/get-started/locally/).
-4.  **Select your OS, 'Pip', and your Compute Platform** (e.g., CUDA 11.8, ROCm for AMD, CPU Only, MPS for Apple Silicon).
-5.  **Copy the generated `pip install` command.**
-6.  **Run the command** in your activated venv.
+Options: `--cpu`, `--legacy-gpu`, `--with-llm` (adds llama-cpp-python, compiled locally), `--dev`, `--no-frontend` (PowerShell: `-Cpu`, `-LegacyGpu`, `-WithLlm`, `-Dev`, `-NoFrontend`).
 
-This will replace the default CUDA 12.1 build with the one appropriate for your system. Note that your `poetry.lock` file will still reference the default source, but the manually installed version will take precedence in your environment.
+### PyTorch and your GPU
 
-## Quick Start
+| Hardware | What the installer does |
+|---|---|
+| NVIDIA RTX 20xx and newer, driver R580+ (CUDA 13) | PyTorch 2.15 + CUDA 13.2 |
+| NVIDIA with an older driver (CUDA 12.x) | PyTorch 2.14 + CUDA 12.6 (update the driver to get 2.15) |
+| NVIDIA GTX 9xx/10xx, Titan V (Maxwell/Pascal/Volta) | PyTorch 2.14 + CUDA 12.6, the last build that supports them (`--legacy-gpu`) |
+| Apple Silicon | PyPI build with MPS |
+| AMD (ROCm) | pick a wheel index at [pytorch.org](https://pytorch.org/get-started/locally/) and run `TORCH_INDEX_URL=<url> ./install.sh` |
+| No GPU | CPU build |
+
+Manual install (any platform): install PyTorch for your hardware from [pytorch.org](https://pytorch.org/get-started/locally/), then `pip install -e ".[dev]"` and `cd frontend && npm ci && npm run build`.
+
+## Quick start
 
 ```bash
-# Ensure your virtual environment is active
-source venv/bin/activate
-
-# Launch the GRADIENT application
-python main.py # Or specific launch script
-
-# Access the UI via your web browser (typically http://127.0.0.1:7860 or similar).
-# Follow UI prompts to load models and start generating/experimenting.
+./run.sh                    # Windows: run.bat
 ```
 
-*(Detailed usage documentation will be available in the project Wiki.)*
+Open **http://127.0.0.1:8000**. With no models installed, GRADIENT opens the **Models** tab: pick something from the catalog (good first choices: *SDXL-Turbo* for 8 GB GPUs, *FLUX.2 [klein] 4B* or *Z-Image-Turbo* for 16 GB+) and press **Download**. When it finishes, select it in *Text-to-Image* and click **Use these** to apply the model's recommended size, steps and guidance.
+
+API docs live at http://127.0.0.1:8000/docs.
+
+## Models
+
+### Downloading
+
+*   **In the UI:** *Models* tab → catalog → *Download*. Or paste a Hugging Face repo (`stabilityai/sdxl-turbo`), a huggingface.co file link, or a direct https link into *Add from Hugging Face or URL*.
+*   **On the command line:**
+
+    ```bash
+    .venv/bin/gradient models catalog                    # list the curated catalog
+    .venv/bin/gradient models download sdxl-turbo        # by catalog id
+    .venv/bin/gradient models download stabilityai/sdxl-turbo
+    .venv/bin/gradient models download unsloth/Qwen3.5-4B-GGUF --type llm     # picks the Q4_K_M file
+    .venv/bin/gradient models download "https://civitai.com/models/123?modelVersionId=456" --type lora
+    .venv/bin/gradient models list
+    .venv/bin/gradient models delete diffusers sdxl-turbo
+    ```
+
+On Windows use `.venv\Scripts\gradient.exe` instead of `.venv/bin/gradient`.
+
+Downloads resume after a cancel or a dropped connection. Files are staged in a hidden `.staging` folder and only appear in model lists once complete.
+
+**Gated models** (FLUX.1 [schnell]/[dev], SD 3.5, FLUX.2 [dev]/[klein 9B], Krea 2): accept the licence on the model's Hugging Face page, create a read token at https://huggingface.co/settings/tokens, then either `export HF_TOKEN=hf_...` before starting GRADIENT, run `.venv/bin/hf auth login`, or paste the token into the Models tab for the session. For Civitai links that need an account, set `CIVITAI_TOKEN`.
+
+The catalog lives in [`config/model_catalog.yaml`](config/model_catalog.yaml); add your own entries with the same fields.
+
+### Folder layout (bring your own models)
+
+```
+data/models/
+  diffusers/     diffusers-format folders (model_index.json)
+  checkpoints/   single-file .safetensors checkpoints (SD1.x, SDXL, SD3, FLUX, ...)
+  lora/          LoRA files or PEFT folders
+  vae/           VAE files or folders
+  controlnet/    ControlNet folders
+  embeddings/    textual inversion files
+  llm/           GGUF chat models
+```
+
+Add more search folders (e.g. a shared models disk) in `config/config.yaml` under `paths.models.search_dirs`, or set `GRADIENT_MODEL_DIR`. The first folder is where downloads go.
+
+## Configuration
+
+Defaults are in [`config/default_settings.yaml`](config/default_settings.yaml); put overrides in `config/config.yaml` or environment variables (see [`.env.example`](.env.example)). Most useful:
+
+| Setting | Env var | Purpose |
+|---|---|---|
+| `performance.memory_mode` | `GRADIENT_MEMORY_MODE` | `auto` (default), `gpu`, `balanced`, `low`, `minimal` |
+| `performance.max_cached_pipelines` | | how many models stay loaded (default 1) |
+| `performance.attention_backend` | | e.g. `flash`, `sage` (default: PyTorch SDPA) |
+| `paths.models.search_dirs` | `GRADIENT_MODEL_DIR` | model folders |
+| `app.port` | `GRADIENT_APP_PORT` | server port |
+
+## Development
+
+```bash
+./install.sh --dev
+make run            # or: make dev  (API with auto-reload)
+make frontend-dev   # Vite dev server on :5173, proxies /api to :8000
+make check          # ruff, pytest, svelte-check, vitest
+```
+
+Backend tests run offline on CPU: they build a tiny random-weight Stable Diffusion pipeline and a fake Hugging Face Hub, so generation and downloads are tested end to end without network or GPU.
+
+Stack: Python 3.11+, FastAPI, diffusers 0.42, transformers 5, PyTorch 2.15, SQLAlchemy 2.1 · SvelteKit 3, Svelte 5, Vite 8, Tailwind CSS 4, Storybook 10, Vitest 5.
 
 ## Core Concepts
 
@@ -107,44 +155,27 @@ python main.py # Or specific launch script
 
 ## Architecture Overview
 
-GRADIENT utilizes a modern Python backend (FastAPI) with asynchronous processing for performance and responsiveness. AI model interactions are handled via libraries like `diffusers` and `llama-cpp-python`. The architecture is designed to be modular, allowing for easier updates and extensions. Communication with the frontend leverages WebSockets for real-time interaction. *(Further details in docs/ARCHITECTURE.md)*
+A FastAPI backend runs all model work (diffusers, llama.cpp) in a worker thread behind a GPU lock, so the API stays responsive during generation and downloads. The SvelteKit UI is built as a static single-page app and served by the same process. See [docs/architecture.md](docs/architecture.md).
 
 ## Roadmap
 
-GRADIENT is under active development. Key areas for near-term focus include:
-
-*   Robust implementation of the Interactive Latent Space Navigator.
-*   Refinement of Structural Diffusion Modulation controls.
-*   Implementation of the Agentic Art Director prototype.
-*   Performance optimization and latency hiding techniques.
-*   UI framework finalization and UX improvements.
-*   Expansion of supported models and techniques (e.g., ELLA integration).
+See the prioritized milestones in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md#9-roadmap-next-three-milestones): an instrumented, architecture-agnostic sampler with live x₀ previews and a job queue; measurement tools (JVP sensitivity, an output-space atlas, metrics); then steering and interpretability (σ-timeline modulation, ConceptAttention, attribute directions) and an experiment-designing agent.
 
 ## Contributing
 
-Contributions are welcome! Please read our `CONTRIBUTING.md` guidelines (Placeholder) for details on reporting issues, submitting pull requests, and coding standards. Key areas for contribution include feature development, UI/UX refinement, performance optimization, and documentation.
-
-Use GitHub Issues for bug reports and feature requests.
+Contributions are welcome. Use GitHub Issues for bug reports and feature requests. Please run `make check` before opening a pull request.
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0. See the `LICENSE` file for details.
+This project is licensed under the Apache License, Version 2.0. See the `LICENSE` file for details. Models downloaded through GRADIENT keep their own licences (shown in the catalog); several are non-commercial.
 
 ## Citation
-
-If you use GRADIENT in your research or artistic scholarly work, please cite it as follows (Placeholder BibTeX):
 
 ```bibtex
 @software{Sandner_GRADIENT_2025,
   author = {Sandner, Daniel},
   title = {{GRADIENT: Generative Research \& Architectural Diffusion Interactive Exploration Navigation Toolkit}},
-  month = {6},
   year = {2025},
-  url = {https://github.com/sandner-art/gradient} # Placeholder URL
+  url = {https://github.com/sandner-art/gradient}
 }
 ```
-
-## Contact
-
-*   **Issues:** [GitHub Issues](https://github.com/sandner-art/gradient/issues) <!-- Placeholder -->
-*   **Community/Discussions:** [GitHub Discussions](https://github.com/sandner-art/gradient/discussions) *(Optional - Placeholder)*

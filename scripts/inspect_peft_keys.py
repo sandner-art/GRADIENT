@@ -1,8 +1,11 @@
-from safetensors.torch import load_file
 import pprint
 
+from safetensors.torch import load_file
+
 # Path to your PEFT LoRA's safetensors file - to inspect peft keys
-lora_file_path = "data/models/lora/unet_lora_peft_format/adapter_model.safetensors" # Adjust path as needed
+lora_file_path = (
+    "data/models/lora/unet_lora_peft_format/adapter_model.safetensors"  # Adjust path as needed
+)
 
 try:
     state_dict = load_file(lora_file_path)

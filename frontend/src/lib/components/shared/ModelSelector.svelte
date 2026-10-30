@@ -51,6 +51,6 @@
 		{/each}
 	</select>
 	<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-		Select loaded/Hub model. Add models to config/search paths.
+		Installed models. Download more in the Models tab.
 	</p>
 </div>

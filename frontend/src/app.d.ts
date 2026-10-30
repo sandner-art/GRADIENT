@@ -11,4 +11,4 @@ declare module '*.svelte' {
   
   // You can also add other global types needed by your app here
   // For example, importing and re-exporting your API types might be useful
-  // export * from '$lib/types'; // Assuming you create a types.ts file
+  // export * from '#lib/types.js'; // Assuming you create a types.ts file

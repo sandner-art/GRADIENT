@@ -1,6 +1,6 @@
 // frontend/src/lib/stores/t2iFormStore.ts
 import { writable } from 'svelte/store';
-import type { Text2ImageRequest } from '$lib/types';
+import type { Text2ImageRequest } from '#lib/types.js';
 
 export const t2iDefaultState: Text2ImageRequest = {
     model_id: 'photomatix_v3.fp16.safetensors',

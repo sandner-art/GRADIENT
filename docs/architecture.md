@@ -61,26 +61,34 @@ The backend is the core engine of GRADIENT, built using Python 3.11+ and the Fas
 2.  **Core Services (`src/gradient/core/`)**:
     *   **Configuration (`config.py`)**: Loads settings from YAML files (`default_settings.yaml`, `config.yaml`) and environment variables (`.env`). Provides access via `get_setting()`. Defines key paths like `PROJECT_ROOT`.
     *   **Logging (`log_setup.py`)**: Configures application-wide logging based on `logging_config.yaml`.
-    *   **Resource Manager (`resource_manager.py`)**: Tracks resource usage, primarily GPU VRAM for loaded AI models. Implements basic allocation, release, and potentially LRU (Least Recently Used) eviction logic (currently placeholder for unloading). Uses `torch.cuda` for VRAM info.
-    *   **Scheduling (`scheduling.py`)**: Placeholder for a future background task queue system to handle long-running AI jobs asynchronously.
+    *   **Device (`device.py`)**: Picks the compute device (cuda > mps > xpu > cpu, or `performance.device`) and a dtype per model family (fp16 for UNet-era models, bf16 for DiT/flow-matching models).
+    *   **Resource Manager (`resource_manager.py`)**: Tracks loaded models with real unload callbacks and evicts the least recently used one when needed.
+    *   **Scheduling (`scheduling.py`)**: `run_gpu_task()` runs blocking model work in a worker thread behind a single GPU lock, so the event loop (API, downloads, polling) stays responsive. Also tracks step progress for `/system/status`. Foundation for the planned job queue.
 
 3.  **AI Modules (`src/gradient/ai/`)**: Encapsulates logic for specific AI tasks.
     *   **Diffusion (`diffusion/`)**:
-        *   `loading.py`: Handles loading diffusion models (Diffusers format, Checkpoints) and VAEs from configured local paths or Hugging Face Hub. Manages caching (`loaded_pipelines`) and interacts with the `ResourceManager`.
+        *   `loading.py`: Loads any diffusers family. Diffusers folders/Hub repos use the class from `model_index.json`; single-file checkpoints are identified from their tensor names. Image-to-image pipelines are derived with `AutoPipelineForImage2Image.from_pipe` (shared weights). Applies `performance.memory_mode` and keeps an LRU cache of pipelines.
+        *   `guidance.py`: Parser for scheduled CFG (`linear(a,b)`, `cosine(a,b)`, keyframes).
         *   `models.py`: Pydantic models for diffusion tasks (T2I, I2I, XYZGrid requests/responses).
-        *   `pipelines.py`: Contains core logic for running diffusion pipelines (e.g., `run_text_to_image`, `run_image_to_image`), including parameter handling, scheduler selection, VAE decoding, output saving (with metadata), and database logging.
+        *   `pipelines.py`: `generate_images()` calls the pipeline's own `__call__` with per-image seeded generators, custom sigmas, scheduler validation, and a `callback_on_step_end` hook (scheduled CFG, progress; the extension point for modulation). Async wrappers save PNGs with metadata and log runs to the database.
         *   `xyz_grid.py`: Implements logic for generating images based on parameter variations across axes, coordinating calls to underlying pipelines.
     *   **LLM (`llm/`)**: (Placeholder/Basic Implementation)
         *   `loading.py`: Logic for loading LLMs (currently focusing on GGUF via `llama-cpp-python`).
         *   `interaction.py`: Functions to handle chat completions (streaming and non-streaming).
         *   `models.py`: Pydantic models for LLM requests/responses.
     *   **Visualization (`viz/`)**: (Placeholder/Basic Implementation)
-        *   `latent_space.py`: Backend logic for sampling latents, using UMAP for dimensionality reduction, and optionally decoding previews with a VAE.
-        *   `sensitivity.py`: Placeholder/backend logic for parameter sensitivity analysis.
+        *   `latent_space.py`: Prototype UMAP projection of random latents (scaffolding; see the research review for the planned output-space atlas).
+        *   `sensitivity.py`: Parameter sensitivity heatmaps by central finite differences on shared noise (guidance scale or a LoRA weight).
         *   `models.py`: Pydantic models for visualization requests/responses.
     *   **Agents (`agents/`)**: Placeholder for future agentic capabilities.
 
-4.  **Database (`src/gradient/database/`)**:
+4.  **Model Manager (`src/gradient/model_manager/`)**:
+    *   `catalog.py` loads the curated catalog (`config/model_catalog.yaml`).
+    *   `inventory.py` lists, resolves and deletes local models across the configured search folders; `manifest.py` records where downloads came from (repo, licence, family, recommended defaults).
+    *   `downloader.py` runs downloads in the background: Hugging Face repos/files in a child process (`hf_worker.py`, so they can be cancelled and resumed) with byte-level progress; direct URLs with HTTP Range resume. Files are staged in `.staging/` and moved into place when complete.
+    *   Exposed via `/api/v1/models/*` and the `gradient models ...` CLI (`src/gradient/cli.py`).
+
+5.  **Database (`src/gradient/database/`)**:
     *   **Models (`models.py`)**: Defines SQLAlchemy ORM models (`ExperimentRun`, `GeneratedOutput`, `ModelPreset`) representing the database schema using `declarative_base`.
     *   **Session (`session.py`)**: Configures the asynchronous SQLAlchemy engine (`create_async_engine` with `aiosqlite`), provides an async session factory (`async_sessionmaker`), and includes the `get_db_session` context manager for dependency injection in FastAPI endpoints. Also contains database initialization logic (`init_db`) and helper functions (like `update_run_status`).
 
@@ -97,7 +105,7 @@ The frontend provides the user interface for interacting with the GRADIENT backe
 
 ### Key Technologies:
 
-*   **SvelteKit:** A modern web framework built on Svelte, providing routing, server-side rendering (SSR), build tooling, etc.
+*   **SvelteKit 3:** Configured in `vite.config.ts` (no `svelte.config.js`), built with `adapter-static` as a single-page app into `frontend/build`, which the FastAPI server serves at `/`. Library code is imported through the `#lib` subpath alias.
 *   **Svelte:** A reactive UI compiler that shifts work from the browser to the build step, resulting in highly performant applications.
 *   **TypeScript:** Used for type safety in frontend code.
 *   **Tailwind CSS:** A utility-first CSS framework for rapid UI development.

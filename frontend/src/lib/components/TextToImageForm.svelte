@@ -1,15 +1,16 @@
 <!-- frontend/src/lib/components/TextToImageForm.svelte -->
 <script lang="ts">
 	// --- Imports ---
-	import { get, post, isApiError, type ApiError } from '$lib/apiClient';
-	import type { Text2ImageRequest, Text2ImageResponse, ImageResult, PresetRead, PresetSetting, PresetCreate } from '$lib/types';
-	import { t2iFormStore } from '$lib/stores/t2iFormStore';
+	import { get, post, isApiError, type ApiError } from '#lib/apiClient.js';
+	import type { Text2ImageRequest, Text2ImageResponse, ImageResult, PresetRead, PresetSetting, PresetCreate } from '#lib/types.js';
+	import { t2iFormStore } from '#lib/stores/t2iFormStore.js';
 	import { onMount, beforeUpdate, createEventDispatcher } from 'svelte';
     import ModelSelector from './shared/ModelSelector.svelte';
     import SchedulerSelector from './shared/SchedulerSelector.svelte';
     import SeedInput from './shared/SeedInput.svelte';
     import SubmitButton from './shared/SubmitButton.svelte';
-    import { fetchPresetsForModel, applyPresetToStore, savePresetFromStore } from '$lib/utils/presetManager';
+    import RecommendedSettings from './shared/RecommendedSettings.svelte';
+    import { fetchPresetsForModel, applyPresetToStore, savePresetFromStore } from '#lib/utils/presetManager.js';
 
     // --- Dispatcher ---
     const dispatch = createEventDispatcher<{success: ImageResult[]}>();
@@ -69,10 +70,10 @@
         if (isFetchingSystemInfo) return; isFetchingSystemInfo = true;
         try {
             const [models, schedulers, loras, embeddings] = await Promise.all([
-                get<string[]>('/system/models/diffusion').catch(e => { console.error("Fetch models error:", e); return []; }),
-                get<string[]>('/system/schedulers').catch(e => { console.error("Fetch schedulers error:", e); return ['Default']; }),
-                get<string[]>('/system/models/loras').catch(e => { console.error("Fetch loras error:", e); return []; }),
-                get<string[]>('/system/models/embeddings').catch(e => { console.error("Fetch embeddings error:", e); return []; })
+                get<string[]>('/system/models/diffusion').catch((e): string[] => { console.error("Fetch models error:", e); return []; }),
+                get<string[]>('/system/schedulers').catch((e): string[] => { console.error("Fetch schedulers error:", e); return ['Default']; }),
+                get<string[]>('/system/models/loras').catch((e): string[] => { console.error("Fetch loras error:", e); return []; }),
+                get<string[]>('/system/models/embeddings').catch((e): string[] => { console.error("Fetch embeddings error:", e); return []; })
             ]);
             availableModels = models; availableSchedulers = ['Default', ...schedulers.filter(s => s !== 'Default')];
             availableLoras = loras; availableEmbeddings = embeddings;
@@ -110,7 +111,7 @@
          if (idToFind === null || isNaN(idToFind)) { return; }
          const preset = availablePresets.find(p => p.id === idToFind);
          // Use utility to apply to store, provide callback to clear local sigma string
-         applyPresetToStore(preset, t2iFormStore, () => {
+         applyPresetToStore(preset ?? null, t2iFormStore, () => {
              customSigmasString = $t2iFormStore.custom_sigmas?.join(', ') ?? '';
          });
          if (!preset) { console.warn("Preset with ID " + idToFind + " not found."); }
@@ -216,6 +217,18 @@
 			selectedModelId={$t2iFormStore.model_id}
 			on:change={(e) => t2iFormStore.update(s => ({ ...s, model_id: e.detail }))}
             disabled={isFetchingSystemInfo}
+		/>
+
+		<RecommendedSettings
+			modelId={$t2iFormStore.model_id}
+			onapply={(d) => t2iFormStore.update((s) => ({
+				...s,
+				width: d.width ?? s.width,
+				height: d.height ?? s.height,
+				num_inference_steps: d.steps ?? s.num_inference_steps,
+				guidance_scale: d.guidance_scale ?? s.guidance_scale,
+				scheduler_id: d.scheduler ?? s.scheduler_id
+			}))}
 		/>
 
 		<!-- Preset Selector -->
@@ -354,7 +367,7 @@
 		<div>
 			<label for="custom_sigmas_t2i" class="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Custom Sigmas (Optional):</label>
 			<textarea id="custom_sigmas_t2i" rows="2" bind:value={customSigmasString} placeholder="e.g., 14.6, 8.4, 5.2, ..." class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"></textarea>
-			<p class="mt-1 text-xs text-gray-500 dark:text-gray-400"> Comma or space separated. Overrides 'Steps'. Backend only uses length now.</p>
+			<p class="mt-1 text-xs text-gray-500 dark:text-gray-400"> Comma or space separated, passed to the scheduler (Euler or flow-matching schedulers). Overrides 'Steps'.</p>
 		</div>
 		<!-- Number of Outputs -->
 		<div>

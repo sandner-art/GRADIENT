@@ -1,7 +1,7 @@
 <!-- frontend/src/lib/components/XYZGridForm.svelte -->
 <script lang="ts">
-	import { post, isApiError, type ApiError } from '$lib/apiClient';
-	import type { XYZGridRequest, XYZGridResponse, DiffusionTaskBase, AxisParameter } from '$lib/types';
+	import { post, isApiError, type ApiError } from '#lib/apiClient.js';
+	import type { XYZGridRequest, XYZGridResponse, DiffusionTaskBase, AxisParameter } from '#lib/types.js';
     import { createEventDispatcher } from 'svelte';
 
     const dispatch = createEventDispatcher<{submit: XYZGridResponse, error: string, loading: boolean}>();

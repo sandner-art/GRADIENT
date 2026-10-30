@@ -173,3 +173,5 @@ cython_debug/
 /data/models
 /experiments
 /data/database
+/logs/*.log
+/frontend/storybook-static

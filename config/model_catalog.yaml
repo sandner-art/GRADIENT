@@ -1,0 +1,1189 @@
+# GRADIENT model catalog - curated models for one-click download (Models tab / `gradient models catalog`).
+# Verified against the Hugging Face API on 2026-10-30 for diffusers 0.42.1 / transformers 5.x / llama-cpp-python 0.3.x.
+#
+# Add your own entries freely (same schema). Fields:
+# - type: diffusers | checkpoints | vae | lora | controlnet | embeddings | llm  (decides the target folder)
+# - allow_patterns / ignore_patterns: passed to huggingface_hub.snapshot_download (fnmatch globs, "*" matches "/").
+#   Large repos use allow-lists so new upstream files are not downloaded by surprise.
+# - files: exact repo-relative filenames for single-file downloads (LoRA, GGUF, checkpoints).
+# - pipeline: diffusers class used to load the entry (informational for lora/llm).
+# - variant: weight variant passed to from_pretrained (only when the files exist).
+# - size_gb: decimal GB (1e9 bytes) actually downloaded with the patterns above.
+# - min_vram_gb: rough minimum with all components on the GPU and no offload. GRADIENT's
+#   performance.memory_mode: auto offloads to system RAM, so most models run on much smaller GPUs (slower).
+# - gated: true -> accept the licence on huggingface.co and provide a token (HF_TOKEN or `hf auth login`).
+# - defaults: recommended generation settings; the UI can apply them when you pick the model.
+version: 1
+models:
+
+  # ---------------------------------------------------------------------------
+  # 1. Base text-to-image pipelines (diffusers format)
+  # ---------------------------------------------------------------------------
+
+  - id: sd15
+    name: "Stable Diffusion 1.5"
+    type: diffusers
+    family: sd15
+    source: huggingface
+    repo_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "feature_extractor/*"
+      - "*/config.json"
+      - "*.fp16.safetensors"
+    ignore_patterns: null
+    variant: fp16
+    torch_dtype: float16
+    gated: false
+    license: creativeml-openrail-m
+    size_gb: 2.74
+    min_vram_gb: 4
+    pipeline: StableDiffusionPipeline
+    base_model_family: null
+    defaults: {width: 512, height: 512, steps: 30, guidance_scale: 7.5}
+    tags: [text-to-image, recommended, low-vram, classic]
+    description: "The classic 512px latent diffusion model and the base of a huge LoRA/ControlNet ecosystem; runs on almost any GPU."
+    homepage: https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
+    verified: true
+    notes: >-
+      The original runwayml/stable-diffusion-v1-5 repo was removed. This is the maintained mirror, and its files match
+      the original. The patterns skip the 4-7.7 GB root .ckpt/.safetensors, all .bin, non_ema and fp32 weights.
+      Includes the fp16 safety_checker (0.61 GB). To skip it, also drop "feature_extractor/*" and pass
+      safety_checker=None, feature_extractor=None (download becomes ~2.13 GB).
+
+  - id: sdxl-base
+    name: "Stable Diffusion XL 1.0 (base)"
+    type: diffusers
+    family: sdxl
+    source: huggingface
+    repo_id: stabilityai/stable-diffusion-xl-base-1.0
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "tokenizer_2/*"
+      - "text_encoder/config.json"
+      - "text_encoder/model.fp16.safetensors"
+      - "text_encoder_2/config.json"
+      - "text_encoder_2/model.fp16.safetensors"
+      - "unet/config.json"
+      - "unet/diffusion_pytorch_model.fp16.safetensors"
+      - "vae/config.json"
+      - "vae/diffusion_pytorch_model.fp16.safetensors"
+    ignore_patterns: null
+    variant: fp16
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 6.94
+    min_vram_gb: 8
+    pipeline: StableDiffusionXLPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 30, guidance_scale: 6.0}
+    tags: [text-to-image, recommended]
+    description: "Stability's 1024px UNet model with two CLIP text encoders, and the reference point for SDXL LoRAs and ControlNets."
+    homepage: https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
+    verified: true
+    notes: >-
+      The allow-list skips the two 6.9 GB root single-file checkpoints, the offset LoRA, fp32 weights, flax/onnx/openvino
+      exports and the duplicate vae_1_0/ folder. The stock SDXL VAE can produce NaNs/black images in fp16, so swap in
+      vae-sdxl-fp16-fix (or upcast the VAE). Runs in ~5-6 GB with enable_model_cpu_offload().
+
+  - id: sdxl-turbo
+    name: "SDXL-Turbo"
+    type: diffusers
+    family: sdxl
+    source: huggingface
+    repo_id: stabilityai/sdxl-turbo
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "tokenizer_2/*"
+      - "text_encoder/config.json"
+      - "text_encoder/model.fp16.safetensors"
+      - "text_encoder_2/config.json"
+      - "text_encoder_2/model.fp16.safetensors"
+      - "unet/config.json"
+      - "unet/diffusion_pytorch_model.fp16.safetensors"
+      - "vae/config.json"
+      - "vae/diffusion_pytorch_model.fp16.safetensors"
+    ignore_patterns: null
+    variant: fp16
+    torch_dtype: float16
+    gated: false
+    license: sai-nc-community
+    size_gb: 6.94
+    min_vram_gb: 8
+    pipeline: StableDiffusionXLPipeline
+    base_model_family: null
+    defaults: {width: 512, height: 512, steps: 1, guidance_scale: 0.0}
+    tags: [text-to-image, fast, distilled]
+    description: "Adversarially distilled SDXL that makes usable 512px images in 1-4 steps without CFG."
+    homepage: https://huggingface.co/stabilityai/sdxl-turbo
+    verified: true
+    notes: >-
+      License tag is "other" (sai-nc-community: non-commercial / Stability community terms). The allow-list skips the
+      13.9 GB and 6.9 GB root single-file checkpoints and the onnx exports. Use guidance_scale=0.0. For a fast SDXL model
+      with a permissive license, use sdxl-base plus lora-sdxl-lightning-4step instead.
+
+  - id: sd35-medium
+    name: "Stable Diffusion 3.5 Medium"
+    type: diffusers
+    family: sd3
+    source: huggingface
+    repo_id: stabilityai/stable-diffusion-3.5-medium
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "tokenizer_2/*"
+      - "tokenizer_3/*"
+      - "text_encoder/config.json"
+      - "text_encoder/model.safetensors"
+      - "text_encoder_2/config.json"
+      - "text_encoder_2/model.safetensors"
+      - "text_encoder_3/config.json"
+      - "text_encoder_3/model.safetensors.index.json"
+      - "text_encoder_3/model-0000*-of-00002.safetensors"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: stabilityai-ai-community
+    size_gb: 16.28
+    min_vram_gb: 20
+    pipeline: StableDiffusion3Pipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 40, guidance_scale: 4.5}
+    tags: [text-to-image, gated, mmdit]
+    description: "2.5B MMDiT-X model with three text encoders (CLIP-L, CLIP-G, T5-XXL) for 0.25-2MP images."
+    homepage: https://huggingface.co/stabilityai/stable-diffusion-3.5-medium
+    verified: true
+    notes: >-
+      Gated: accept the license on HF and supply a token. The transformer and VAE have no fp16 variant files, and the
+      *.fp16.* text-encoder files are byte-identical duplicates, so use variant=null. The allow-list skips the duplicates,
+      the ComfyUI text_encoders/ folder (16 GB) and the 5.1 GB root checkpoint. Most of the download is T5-XXL
+      (9.5 GB). Load with text_encoder_3=None, tokenizer_3=None and drop the text_encoder_3 patterns to get ~6.8 GB on
+      disk and ~8 GB VRAM. enable_model_cpu_offload() also fits in ~10 GB. Stability community license: free under
+      $1M annual revenue.
+
+  - id: sd35-large
+    name: "Stable Diffusion 3.5 Large"
+    type: diffusers
+    family: sd3
+    source: huggingface
+    repo_id: stabilityai/stable-diffusion-3.5-large
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "tokenizer_2/*"
+      - "tokenizer_3/*"
+      - "text_encoder/config.json"
+      - "text_encoder/model.safetensors"
+      - "text_encoder_2/config.json"
+      - "text_encoder_2/model.safetensors"
+      - "text_encoder_3/config.json"
+      - "text_encoder_3/model.safetensors.index.json"
+      - "text_encoder_3/model-0000*-of-00002.safetensors"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: stabilityai-ai-community
+    size_gb: 27.63
+    min_vram_gb: 32
+    pipeline: StableDiffusion3Pipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 28, guidance_scale: 3.5}
+    tags: [text-to-image, gated, mmdit, high-quality]
+    description: "8B MMDiT flagship of the SD3.5 family, with strong prompt adherence at 1MP."
+    homepage: https://huggingface.co/stabilityai/stable-diffusion-3.5-large
+    verified: true
+    notes: >-
+      Gated (auto). Same layout as sd35-medium: use variant=null, and the patterns skip the fp16 duplicates,
+      text_encoders/ and the 16.5 GB root checkpoint. The transformer is 16.3 GB in bf16. enable_model_cpu_offload()
+      needs ~18-20 GB. The model card's NF4 transformer (bitsandbytes) plus offload brings it to ~10-12 GB.
+
+  - id: flux1-schnell
+    name: "FLUX.1 [schnell]"
+    type: diffusers
+    family: flux1
+    source: huggingface
+    repo_id: black-forest-labs/FLUX.1-schnell
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "tokenizer_2/*"
+      - "text_encoder/*"
+      - "text_encoder_2/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: apache-2.0
+    size_gb: 33.73
+    min_vram_gb: 36
+    pipeline: FluxPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 4, guidance_scale: 0.0}
+    tags: [text-to-image, fast, distilled, recommended, apache]
+    description: "12B rectified-flow transformer distilled to 1-4 steps, under the permissive Apache-2.0 license."
+    homepage: https://huggingface.co/black-forest-labs/FLUX.1-schnell
+    verified: true
+    notes: >-
+      Apache-2.0 but still gated "auto" on HF, so the downloader needs a token and the user must click through.
+      The allow-list skips the 23.8 GB root flux1-schnell.safetensors and the 0.34 GB root ae.safetensors (the
+      same VAE as vae/). Use max_sequence_length=256. enable_model_cpu_offload() fits ~24 GB.
+      enable_sequential_cpu_offload() or an fp8/NF4 transformer runs it in 8-12 GB, slowly.
+
+  - id: flux1-dev
+    name: "FLUX.1 [dev]"
+    type: diffusers
+    family: flux1
+    source: huggingface
+    repo_id: black-forest-labs/FLUX.1-dev
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "tokenizer_2/*"
+      - "text_encoder/*"
+      - "text_encoder_2/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: flux-1-dev-non-commercial-license
+    size_gb: 33.75
+    min_vram_gb: 36
+    pipeline: FluxPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 28, guidance_scale: 3.5}
+    tags: [text-to-image, gated, non-commercial, high-quality]
+    description: "Guidance-distilled 12B FLUX model and the base for most FLUX LoRAs and ControlNets."
+    homepage: https://huggingface.co/black-forest-labs/FLUX.1-dev
+    verified: true
+    notes: >-
+      Gated (auto), non-commercial license. The patterns skip the 23.8 GB root flux1-dev.safetensors and the root
+      ae.safetensors. guidance_scale is the embedded distilled guidance, not true CFG. Memory is the same as
+      flux1-schnell (~24 GB with model offload).
+
+  - id: flux2-klein-4b
+    name: "FLUX.2 [klein] 4B"
+    type: diffusers
+    family: flux2
+    source: huggingface
+    repo_id: black-forest-labs/FLUX.2-klein-4B
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: apache-2.0
+    size_gb: 15.98
+    min_vram_gb: 18
+    pipeline: Flux2KleinPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 4, guidance_scale: 1.0}
+    tags: [text-to-image, image-editing, fast, distilled, recommended, apache, "2026"]
+    description: "Small step-distilled FLUX.2 model (Jan 2026) for 4-step generation and multi-reference editing, Apache-2.0 and ungated."
+    homepage: https://huggingface.co/black-forest-labs/FLUX.2-klein-4B
+    verified: true
+    notes: >-
+      Text encoder is a Qwen3-4B-class LLM (8.0 GB). The patterns skip the 7.75 GB root single-file
+      flux-2-klein-4b.safetensors and the sample images. Flux2KleinPipeline's own defaults (50 steps, guidance 4.0) suit
+      the undistilled -base checkpoints, so pass 4 steps and guidance 1.0 here. BFL says it runs in about 13 GB, and
+      the model card uses enable_model_cpu_offload(). Pass image=[...] for editing. Undistilled sibling for
+      fine-tuning: black-forest-labs/FLUX.2-klein-base-4B.
+
+  - id: flux2-klein-9b
+    name: "FLUX.2 [klein] 9B"
+    type: diffusers
+    family: flux2
+    source: huggingface
+    repo_id: black-forest-labs/FLUX.2-klein-9B
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: flux-non-commercial-license
+    size_gb: 34.72
+    min_vram_gb: 40
+    pipeline: Flux2KleinPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 4, guidance_scale: 1.0}
+    tags: [text-to-image, image-editing, fast, distilled, gated, non-commercial, "2026"]
+    description: "Larger 4-step FLUX.2 klein (9B DiT, Qwen3-8B-class text encoder) with clearly better quality than the 4B."
+    homepage: https://huggingface.co/black-forest-labs/FLUX.2-klein-9B
+    verified: true
+    notes: >-
+      Gated (auto), FLUX non-commercial license, unlike the Apache-licensed 4B. The patterns skip the 18.2 GB root
+      single-file checkpoint. Transformer 18.2 GB plus text encoder 16.4 GB. enable_model_cpu_offload() needs ~20-24 GB.
+      BFL also publishes -fp8 / -nvfp4 / -kv repos, which this catalog does not include.
+
+  - id: flux2-dev
+    name: "FLUX.2 [dev]"
+    type: diffusers
+    family: flux2
+    source: huggingface
+    repo_id: black-forest-labs/FLUX.2-dev
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: flux-non-commercial-license
+    size_gb: 112.82
+    min_vram_gb: 120
+    pipeline: Flux2Pipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 28, guidance_scale: 4.0}
+    tags: [text-to-image, image-editing, gated, non-commercial, huge, "2025"]
+    description: "BFL's flagship open-weight FLUX.2 model (Nov 2025): a 32B-class DiT with a Mistral-Small-24B text encoder, for generation and multi-reference editing."
+    homepage: https://huggingface.co/black-forest-labs/FLUX.2-dev
+    verified: true
+    notes: >-
+      Very large: transformer 64.4 GB plus text encoder 47.9 GB in bf16. The patterns skip the 64.4 GB root
+      flux2-dev.safetensors and the root ae.safetensors. The model card recommends 50 steps, with 28 as a good trade-off.
+      Even with model offload the DiT alone needs about 70 GB. On 24-32 GB consumer cards, use the ungated, pre-quantized
+      repo diffusers/FLUX.2-dev-bnb-4bit (needs bitsandbytes; same license), ideally with text_encoder=None and
+      precomputed or remote prompt embeds as the model card shows. Show a size warning before downloading.
+
+  - id: qwen-image-2512
+    name: "Qwen-Image-2512"
+    type: diffusers
+    family: qwen-image
+    source: huggingface
+    repo_id: Qwen/Qwen-Image-2512
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: apache-2.0
+    size_gb: 57.71
+    min_vram_gb: 64
+    pipeline: QwenImagePipeline
+    base_model_family: null
+    defaults: {width: 1328, height: 1328, steps: 50, guidance_scale: 4.0}
+    tags: [text-to-image, text-rendering, apache, huge, "2025"]
+    description: "Dec-2025 refresh of the 20B Qwen-Image MMDiT, with excellent text rendering and a Qwen2.5-VL-7B text encoder, Apache-2.0."
+    homepage: https://huggingface.co/Qwen/Qwen-Image-2512
+    verified: true
+    notes: >-
+      Pass guidance_scale to the pipeline as true_cfg_scale=4.0 (QwenImagePipeline uses true CFG and needs a
+      negative_prompt, even " "). Transformer 40.9 GB plus text encoder 16.6 GB in bf16. Model offload still needs about
+      44 GB for the DiT. Smaller cards need quantization (bnb/torchao/GGUF) or group offloading. Recommended sizes
+      include 1664x928 (16:9) and 1472x1104 (4:3). The original Qwen/Qwen-Image (Aug 2025, same architecture) is also
+      available.
+
+  - id: qwen-image-2-1
+    name: "Qwen-Image-2.1"
+    type: diffusers
+    family: qwen-image
+    source: huggingface
+    repo_id: Qwen/Qwen-Image-2.1
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "processor/*"
+      - "scheduler/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: qwen-research
+    size_gb: 33.13
+    min_vram_gb: 40
+    pipeline: QwenImage21Pipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 40, guidance_scale: 1.0}
+    tags: [text-to-image, image-editing, rgba, text-rendering, non-commercial, "2026"]
+    description: "Sep-2026 Qwen image model with a 7B single-stream DiT and a Qwen3-VL text encoder; supports T2I, up to 10 reference images, local edits and transparent (RGBA) output."
+    homepage: https://huggingface.co/Qwen/Qwen-Image-2.1
+    verified: true
+    notes: >-
+      The Qwen Research License differs from the Apache-2.0 license on Qwen-Image/2512, so check it before commercial use.
+      Requires transformers>=5.17 (Qwen3VLProcessor / Qwen3VLForConditionalGeneration). QwenImage21Pipeline ships in
+      diffusers 0.42.1. Map guidance_scale to true_cfg_scale (CFG is only on when >1 and a negative_prompt is given;
+      the model card uses neither). The model card examples run 2048x2048 (native 2K, aspect table up to 2752x1536).
+      The pipeline default is output_resolution=1024. enable_model_cpu_offload() fits ~18-20 GB. A Turbo variant,
+      Qwen/Qwen-Image-2.1-Turbo (8 fixed steps, same pipeline and license, 32.45 GB with the same patterns), was
+      verified but is not listed separately.
+
+  - id: z-image-turbo
+    name: "Z-Image-Turbo"
+    type: diffusers
+    family: z-image
+    source: huggingface
+    repo_id: Tongyi-MAI/Z-Image-Turbo
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: apache-2.0
+    size_gb: 32.85
+    min_vram_gb: 24
+    pipeline: ZImagePipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 9, guidance_scale: 0.0}
+    tags: [text-to-image, fast, distilled, recommended, apache, "2025"]
+    description: "Tongyi-MAI's 6B single-stream DiT distilled to 8 forward passes, with strong photorealism and bilingual text rendering, Apache-2.0."
+    homepage: https://huggingface.co/Tongyi-MAI/Z-Image-Turbo
+    verified: true
+    notes: >-
+      The transformer is stored in fp32 (24.6 GB on disk), so loading with torch_dtype=bfloat16 halves it to ~12.3 GB in
+      memory. The text encoder is Qwen3-4B (8.0 GB). The allow-list skips assets/ (~53 MB of images and a PDF).
+      num_inference_steps=9 gives 8 DiT forward passes. guidance_scale must be 0. The model card says it fits 16 GB cards
+      (with enable_model_cpu_offload()). The undistilled base, Tongyi-MAI/Z-Image (Jan 2026, ZImagePipeline), is also
+      available for fine-tuning and CFG research.
+
+  - id: chroma1-hd
+    name: "Chroma1-HD"
+    type: diffusers
+    family: chroma
+    source: huggingface
+    repo_id: lodestones/Chroma1-HD
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: apache-2.0
+    size_gb: 27.49
+    min_vram_gb: 32
+    pipeline: ChromaPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 40, guidance_scale: 3.0}
+    tags: [text-to-image, apache, uncensored-base, finetune-friendly]
+    description: "8.9B community model derived from FLUX.1-schnell, retrained into an undistilled, Apache-2.0 base with real CFG and negative prompts."
+    homepage: https://huggingface.co/lodestones/Chroma1-HD
+    verified: true
+    notes: >-
+      T5-XXL only (no CLIP). The patterns skip the 17.8 GB root Chroma1-HD.safetensors and the ComfyUI workflow and
+      images. Use a negative prompt (model card example: "low quality, ugly, unfinished, out of focus, deformed,
+      disfigure, blurry, smudged, restricted palette, flat colors"). The model card uses enable_model_cpu_offload(),
+      which fits ~18-20 GB. The base model is less filtered than most, so consider the workbench's content settings.
+
+  - id: sana-1600m-1024
+    name: "SANA 1.6B 1024px (BF16)"
+    type: diffusers
+    family: sana
+    source: huggingface
+    repo_id: Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/config.json"
+      - "text_encoder/model.safetensors.index.bf16.json"
+      - "text_encoder/model.bf16-*.safetensors"
+      - "transformer/config.json"
+      - "transformer/diffusion_pytorch_model.bf16.safetensors"
+      - "vae/config.json"
+      - "vae/diffusion_pytorch_model.bf16.safetensors"
+    ignore_patterns: null
+    variant: bf16
+    torch_dtype: bfloat16
+    gated: false
+    license: apache-2.0
+    size_gb: 9.73
+    min_vram_gb: 12
+    pipeline: SanaPipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 20, guidance_scale: 4.5}
+    tags: [text-to-image, low-vram, efficient, linear-attention]
+    description: "NVIDIA's efficient 1.6B linear-attention DiT with a 32x DC-AE and a Gemma-2-2B text encoder, fast at 1024px on modest GPUs."
+    homepage: https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers
+    verified: true
+    notes: >-
+      The allow-list downloads only the bf16 variant files and skips the fp32 transformer shards (6.4 GB) and the int4
+      file. The model card casts pipe.vae and pipe.text_encoder to bf16 after loading. With
+      enable_model_cpu_offload() it runs in ~8 GB. The 2-step distilled sibling
+      Efficient-Large-Model/Sana_Sprint_1.6B_1024px_diffusers (SanaSprintPipeline, Apache-2.0, 9.74 GB, no variant) was
+      verified too. PixArt-Sigma was left out: its diffusers repo stores T5-XXL in fp32, so the download is 21.8 GB
+      despite the 0.6B DiT.
+
+  - id: krea2-turbo
+    name: "Krea 2 Turbo"
+    type: diffusers
+    family: krea2
+    source: huggingface
+    repo_id: krea/Krea-2-Turbo
+    revision: main
+    files: null
+    allow_patterns:
+      - "model_index.json"
+      - "scheduler/*"
+      - "tokenizer/*"
+      - "text_encoder/*"
+      - "transformer/*"
+      - "vae/*"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: true
+    license: krea-2-community-license
+    size_gb: 35.68
+    min_vram_gb: 40
+    pipeline: Krea2Pipeline
+    base_model_family: null
+    defaults: {width: 1024, height: 1024, steps: 8, guidance_scale: 0.0}
+    tags: [text-to-image, fast, distilled, gated, aesthetic, "2026"]
+    description: "Krea's June-2026 open-weight ~12-13B DiT (Qwen3-VL text encoder), distilled to 8 steps for photographic, aesthetic output."
+    homepage: https://huggingface.co/krea/Krea-2-Turbo
+    verified: true
+    notes: >-
+      Gated (auto). Krea 2 Community License (PDF in the repo). The license requires deployers to filter content, so
+      review it. The patterns skip the 26.3 GB root turbo.safetensors (for Krea's own codebase) and images/.
+      Krea2Pipeline is native in diffusers 0.42.1. Its class defaults (28 steps, guidance 4.5) suit krea/Krea-2-Raw,
+      so pass 8 steps and guidance 0.0 for Turbo. Transformer 26.3 GB plus text encoder 8.9 GB in bf16, so use
+      offloading or fp8 on 24-32 GB cards. File list and sizes were verified via the API, but model_index.json could
+      not be read (gated), so the component classes come from the diffusers source.
+
+  # ---------------------------------------------------------------------------
+  # 2. VAEs
+  # ---------------------------------------------------------------------------
+
+  - id: vae-sdxl-fp16-fix
+    name: "SDXL VAE (fp16 fix)"
+    type: vae
+    family: sdxl
+    source: huggingface
+    repo_id: madebyollin/sdxl-vae-fp16-fix
+    revision: main
+    files: null
+    allow_patterns:
+      - "config.json"
+      - "diffusion_pytorch_model.safetensors"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: mit
+    size_gb: 0.33
+    min_vram_gb: 1
+    pipeline: AutoencoderKL
+    base_model_family: sdxl
+    defaults: null
+    tags: [vae, recommended, fp16-safe]
+    description: "SDXL VAE finetuned to keep activations in fp16 range, which removes NaN/black-image failures without upcasting."
+    homepage: https://huggingface.co/madebyollin/sdxl-vae-fp16-fix
+    verified: true
+    notes: >-
+      Load with AutoencoderKL.from_pretrained(path, torch_dtype=float16) and pass vae=... to SDXL pipelines (base,
+      Turbo, Lightning, SDXL ControlNet). The patterns skip the .bin and the two duplicate single-file copies
+      (sdxl_vae.safetensors, sdxl.vae.safetensors).
+
+  - id: vae-sd-ft-mse
+    name: "SD 1.x VAE ft-MSE"
+    type: vae
+    family: sd15
+    source: huggingface
+    repo_id: stabilityai/sd-vae-ft-mse
+    revision: main
+    files: null
+    allow_patterns:
+      - "config.json"
+      - "diffusion_pytorch_model.safetensors"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: mit
+    size_gb: 0.33
+    min_vram_gb: 1
+    pipeline: AutoencoderKL
+    base_model_family: sd15
+    defaults: null
+    tags: [vae, recommended]
+    description: "Stability's decoder-finetuned SD1.x VAE, which gives sharper and less blotchy faces and textures than the original."
+    homepage: https://huggingface.co/stabilityai/sd-vae-ft-mse
+    verified: true
+    notes: >-
+      Drop-in vae= for any SD1.5-family pipeline. The patterns skip the duplicate .bin. Not compatible with SDXL, SD3,
+      or FLUX latents. FLUX.1/FLUX.2 VAEs are not separate repos: each pipeline repo's vae/ subfolder already holds them
+      (e.g. FLUX.1-schnell vae/, Apache-2.0, 0.17 GB).
+
+  # ---------------------------------------------------------------------------
+  # 3. LoRAs (single-file downloads; load with pipe.load_lora_weights(local_dir, weight_name=files[0]))
+  # ---------------------------------------------------------------------------
+
+  - id: lora-lcm-sd15
+    name: "LCM-LoRA for SD 1.5"
+    type: lora
+    family: sd15
+    source: huggingface
+    repo_id: latent-consistency/lcm-lora-sdv1-5
+    revision: main
+    files: ["pytorch_lora_weights.safetensors"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 0.13
+    min_vram_gb: 4
+    pipeline: null
+    base_model_family: sd15
+    defaults: {steps: 4, guidance_scale: 1.0, scheduler: LCMScheduler, lora_scale: 1.0}
+    tags: [lora, fast, distillation-adapter]
+    description: "Latent-consistency distillation LoRA that makes any SD1.5 checkpoint usable in 2-8 steps."
+    homepage: https://huggingface.co/latent-consistency/lcm-lora-sdv1-5
+    verified: true
+    notes: >-
+      Requires pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config). Guidance should be 0-2 (1.0 = no CFG).
+
+  - id: lora-lcm-sdxl
+    name: "LCM-LoRA for SDXL"
+    type: lora
+    family: sdxl
+    source: huggingface
+    repo_id: latent-consistency/lcm-lora-sdxl
+    revision: main
+    files: ["pytorch_lora_weights.safetensors"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 0.39
+    min_vram_gb: 8
+    pipeline: null
+    base_model_family: sdxl
+    defaults: {steps: 4, guidance_scale: 1.0, scheduler: LCMScheduler, lora_scale: 1.0}
+    tags: [lora, fast, distillation-adapter]
+    description: "LCM distillation LoRA for SDXL-base and most SDXL finetunes, for 4-8 step sampling."
+    homepage: https://huggingface.co/latent-consistency/lcm-lora-sdxl
+    verified: true
+    notes: "Requires LCMScheduler. The repo also has a 1.7 MB technical-report PDF, which is not downloaded."
+
+  - id: lora-sdxl-lightning-4step
+    name: "SDXL-Lightning 4-step LoRA"
+    type: lora
+    family: sdxl
+    source: huggingface
+    repo_id: ByteDance/SDXL-Lightning
+    revision: main
+    files: ["sdxl_lightning_4step_lora.safetensors"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 0.39
+    min_vram_gb: 8
+    pipeline: null
+    base_model_family: sdxl
+    defaults: {steps: 4, guidance_scale: 0.0, scheduler: "EulerDiscreteScheduler(timestep_spacing=trailing)", lora_scale: 1.0}
+    tags: [lora, fast, distillation-adapter, recommended]
+    description: "ByteDance's progressive-adversarial distillation LoRA, giving 4-step 1024px SDXL with better quality than LCM."
+    homepage: https://huggingface.co/ByteDance/SDXL-Lightning
+    verified: true
+    notes: >-
+      Model card: EulerDiscreteScheduler.from_config(..., timestep_spacing="trailing"), guidance_scale=0, steps must
+      match the LoRA. Other files in the repo: sdxl_lightning_2step_lora.safetensors and
+      sdxl_lightning_8step_lora.safetensors (0.39 GB each). The repo also holds full UNet and checkpoint files
+      (5.1-6.9 GB each); download only the LoRA file named here.
+
+  - id: lora-hyper-sd15-8step-cfg
+    name: "Hyper-SD 1.5 8-step CFG LoRA"
+    type: lora
+    family: sd15
+    source: huggingface
+    repo_id: ByteDance/Hyper-SD
+    revision: main
+    files: ["Hyper-SD15-8steps-CFG-lora.safetensors"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 0.27
+    min_vram_gb: 4
+    pipeline: null
+    base_model_family: sd15
+    defaults: {steps: 8, guidance_scale: 6.0, scheduler: "DDIMScheduler(timestep_spacing=trailing)", lora_scale: 1.0}
+    tags: [lora, fast, distillation-adapter, cfg-preserving]
+    description: "Hyper-SD trajectory-segmented consistency LoRA that keeps real CFG, so negative prompts still work in 8 steps."
+    homepage: https://huggingface.co/ByteDance/Hyper-SD
+    verified: true
+    notes: >-
+      The repo metadata has no license tag. LICENSE.md covers several licenses, and the SD1.5/SDXL LoRAs fall under
+      CreativeML OpenRAIL++-M (the FLUX ones under the FLUX.1-dev non-commercial license). The model card says to use
+      DDIM with timestep_spacing="trailing", and that the CFG-preserved LoRAs take guidance 5-8. Other options in the
+      repo: Hyper-SD15-{1step,2steps,4steps,8steps}-lora.safetensors, Hyper-SDXL-{1step,2steps,4steps,8steps}-lora.safetensors
+      and Hyper-SDXL-8steps-CFG-lora.safetensors (0.79 GB), Hyper-FLUX.1-dev-8steps-lora.safetensors (1.39 GB, lora_scale 0.125).
+
+  - id: lora-flux1-turbo-alpha
+    name: "FLUX.1-Turbo-Alpha (8-step LoRA)"
+    type: lora
+    family: flux1
+    source: huggingface
+    repo_id: alimama-creative/FLUX.1-Turbo-Alpha
+    revision: main
+    files: ["diffusion_pytorch_model.safetensors"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: flux-1-dev-non-commercial-license
+    size_gb: 0.69
+    min_vram_gb: 36
+    pipeline: null
+    base_model_family: flux1
+    defaults: {width: 1024, height: 1024, steps: 8, guidance_scale: 3.5, lora_scale: 1.0}
+    tags: [lora, fast, distillation-adapter]
+    description: "Alimama's 8-step distillation LoRA for FLUX.1-dev, roughly 3-4x faster sampling with small quality loss."
+    homepage: https://huggingface.co/alimama-creative/FLUX.1-Turbo-Alpha
+    verified: true
+    notes: >-
+      The LoRA file is named diffusion_pytorch_model.safetensors (not pytorch_lora_weights), so always pass
+      weight_name explicitly. The model card uses load_lora_weights, then fuse_lora(), with guidance 3.5 and
+      max_sequence_length=512. Base: FLUX.1-dev (gated, non-commercial). The repo also has a 6 KB .DS_Store plus
+      images/ and workflows/ folders; skip them.
+
+  # ---------------------------------------------------------------------------
+  # 4. ControlNets
+  # ---------------------------------------------------------------------------
+
+  - id: cn-sd15-canny
+    name: "ControlNet v1.1 Canny (SD 1.5)"
+    type: controlnet
+    family: sd15
+    source: huggingface
+    repo_id: lllyasviel/control_v11p_sd15_canny
+    revision: main
+    files: null
+    allow_patterns:
+      - "config.json"
+      - "diffusion_pytorch_model.fp16.safetensors"
+    ignore_patterns: null
+    variant: fp16
+    torch_dtype: float16
+    gated: false
+    license: openrail
+    size_gb: 0.72
+    min_vram_gb: 5
+    pipeline: ControlNetModel
+    base_model_family: sd15
+    defaults: {width: 512, height: 512, steps: 30, guidance_scale: 7.5, controlnet_conditioning_scale: 1.0}
+    tags: [controlnet, edges]
+    description: "Lvmin Zhang's ControlNet 1.1 for Canny-edge conditioning of SD1.5 models."
+    homepage: https://huggingface.co/lllyasviel/control_v11p_sd15_canny
+    verified: true
+    notes: >-
+      ControlNetModel.from_pretrained(path, variant="fp16", torch_dtype=float16) with StableDiffusionControlNetPipeline.
+      The patterns skip the .bin and fp32 copies. A depth sibling, lllyasviel/control_v11f1p_sd15_depth, has the same
+      file layout (0.72 GB fp16) and was verified.
+
+  - id: cn-sdxl-canny
+    name: "ControlNet Canny (SDXL, diffusers)"
+    type: controlnet
+    family: sdxl
+    source: huggingface
+    repo_id: diffusers/controlnet-canny-sdxl-1.0
+    revision: main
+    files: null
+    allow_patterns:
+      - "config.json"
+      - "diffusion_pytorch_model.fp16.safetensors"
+    ignore_patterns: null
+    variant: fp16
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 2.50
+    min_vram_gb: 10
+    pipeline: ControlNetModel
+    base_model_family: sdxl
+    defaults: {width: 1024, height: 1024, steps: 30, guidance_scale: 6.0, controlnet_conditioning_scale: 0.5}
+    tags: [controlnet, edges]
+    description: "The diffusers team's official Canny ControlNet for SDXL-base 1.0."
+    homepage: https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0
+    verified: true
+    notes: >-
+      Use with StableDiffusionXLControlNetPipeline, preferably with vae-sdxl-fp16-fix. The patterns skip the .bin, fp32
+      and ~38 MB of sample PNGs. The HF metadata wrongly lists base_model as runwayml/stable-diffusion-v1-5. The model
+      is SDXL. Model card examples use conditioning scale 0.5.
+
+  - id: cn-sdxl-depth
+    name: "ControlNet Depth (SDXL, diffusers)"
+    type: controlnet
+    family: sdxl
+    source: huggingface
+    repo_id: diffusers/controlnet-depth-sdxl-1.0
+    revision: main
+    files: null
+    allow_patterns:
+      - "config.json"
+      - "diffusion_pytorch_model.fp16.safetensors"
+    ignore_patterns: null
+    variant: fp16
+    torch_dtype: float16
+    gated: false
+    license: openrail++
+    size_gb: 2.50
+    min_vram_gb: 10
+    pipeline: ControlNetModel
+    base_model_family: sdxl
+    defaults: {width: 1024, height: 1024, steps: 30, guidance_scale: 6.0, controlnet_conditioning_scale: 0.5}
+    tags: [controlnet, depth]
+    description: "The diffusers team's official depth-map ControlNet for SDXL-base 1.0."
+    homepage: https://huggingface.co/diffusers/controlnet-depth-sdxl-1.0
+    verified: true
+    notes: >-
+      Use with StableDiffusionXLControlNetPipeline. You need a depth estimator for the control image, e.g. transformers
+      DPT or Depth-Anything; that model is not in this catalog. For one model covering many control types, see
+      xinsir/controlnet-union-sdxl-1.0 (2.51 GB, ControlNetUnionModel), which was verified but is not listed.
+
+  - id: cn-flux1-union-pro2
+    name: "FLUX.1-dev ControlNet Union Pro 2.0"
+    type: controlnet
+    family: flux1
+    source: huggingface
+    repo_id: Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0
+    revision: main
+    files: null
+    allow_patterns:
+      - "config.json"
+      - "diffusion_pytorch_model.safetensors"
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: flux-1-dev-non-commercial-license
+    size_gb: 4.28
+    min_vram_gb: 40
+    pipeline: FluxControlNetModel
+    base_model_family: flux1
+    defaults: {width: 1024, height: 1024, steps: 30, guidance_scale: 3.5, controlnet_conditioning_scale: 0.7, control_guidance_end: 0.8}
+    tags: [controlnet, union, edges, depth, pose]
+    description: "A single diffusers-format FLUX.1-dev ControlNet for canny, soft-edge, depth, pose and grayscale conditioning."
+    homepage: https://huggingface.co/Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro-2.0
+    verified: true
+    notes: >-
+      Config is FluxControlNetModel with num_mode=null. Pro 2.0 removed the mode embedding, so do not pass control_mode.
+      Use with FluxControlNetPipeline on FLUX.1-dev (gated). The model card recommends these
+      controlnet_conditioning_scale / control_guidance_end pairs: canny 0.7/0.8, soft-edge 0.7/0.8, depth 0.8/0.8,
+      pose 0.9/0.65, gray 0.9/0.8. The patterns skip the repo's custom .py files (only the model card's multi-ControlNet
+      example uses them) and the conds/ and images/ folders.
+
+  # ---------------------------------------------------------------------------
+  # 5. Local LLMs for prompt assistance (GGUF via llama-cpp-python)
+  #    llama_cpp.Llama(model_path=..., n_gpu_layers=-1, n_ctx=defaults.n_ctx). All also run CPU-only (n_gpu_layers=0).
+  #    min_vram_gb = full offload at ~8k context.
+  # ---------------------------------------------------------------------------
+
+  - id: llm-qwen3-5-4b
+    name: "Qwen3.5 4B (Q4_K_M GGUF)"
+    type: llm
+    family: llm
+    source: huggingface
+    repo_id: unsloth/Qwen3.5-4B-GGUF
+    revision: main
+    files: ["Qwen3.5-4B-Q4_K_M.gguf"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: null
+    gated: false
+    license: apache-2.0
+    size_gb: 2.74
+    min_vram_gb: 4
+    pipeline: null
+    base_model_family: null
+    defaults: {n_ctx: 8192, temperature: 0.7, top_p: 0.8, top_k: 20, presence_penalty: 1.5}
+    tags: [llm, prompt-assist, recommended, "2026"]
+    description: "Qwen's Feb-2026 4B hybrid (Gated-DeltaNet + attention) model, a strong small prompt writer with 262k context."
+    homepage: https://huggingface.co/unsloth/Qwen3.5-4B-GGUF
+    verified: true
+    notes: >-
+      GGUF architecture is qwen35, so this needs a recent llama-cpp-python. Hybrid/recurrent fixes landed around 0.3.17,
+      and >=0.3.25 is recommended. Thinking mode is ON by default. For prompt rewriting, disable it with
+      chat_template_kwargs={"enable_thinking": False}; the model does not support Qwen3's /no_think switch. Sampling
+      defaults are the model card's non-thinking settings. The vision projector (mmproj-F16.gguf, 0.67 GB) is
+      optional and not downloaded. Larger option: unsloth/Qwen3.5-9B-GGUF.
+
+  - id: llm-gemma-4-e4b
+    name: "Gemma 4 E4B it (Q4_K_M GGUF)"
+    type: llm
+    family: llm
+    source: huggingface
+    repo_id: unsloth/gemma-4-E4B-it-GGUF
+    revision: main
+    files: ["gemma-4-E4B-it-Q4_K_M.gguf"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: null
+    gated: false
+    license: apache-2.0
+    size_gb: 4.98
+    min_vram_gb: 6
+    pipeline: null
+    base_model_family: null
+    defaults: {n_ctx: 8192, temperature: 1.0, top_p: 0.95, top_k: 64}
+    tags: [llm, prompt-assist, multilingual, "2026"]
+    description: "Google's Mar-2026 on-device Gemma 4 (~4B effective params), with good instruction following and multilingual prompts."
+    homepage: https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF
+    verified: true
+    notes: >-
+      GGUF architecture is gemma4, so it needs llama-cpp-python >=0.3.25 (that release added Gemma 4 chat support).
+      The file is larger than the "4B" name suggests because it includes per-layer embeddings. Unsloth's repo is
+      ungated. Google's official google/gemma-4-E4B-it-qat-q4_0-gguf also exists but was not checked here. Sampling
+      values are Google's usual Gemma recommendation and are not verified for Gemma 4. Optional vision projector:
+      mmproj-F16.gguf (0.99 GB). Smaller option: unsloth/gemma-4-E2B-it-GGUF (not checked).
+
+  - id: llm-llama-3-2-3b
+    name: "Llama 3.2 3B Instruct (Q4_K_M GGUF)"
+    type: llm
+    family: llm
+    source: huggingface
+    repo_id: bartowski/Llama-3.2-3B-Instruct-GGUF
+    revision: main
+    files: ["Llama-3.2-3B-Instruct-Q4_K_M.gguf"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: null
+    gated: false
+    license: llama3.2
+    size_gb: 2.02
+    min_vram_gb: 3
+    pipeline: null
+    base_model_family: null
+    defaults: {n_ctx: 8192, temperature: 0.7, top_p: 0.9}
+    tags: [llm, prompt-assist, stable, widely-supported]
+    description: "Meta's compact 3B instruct model, with no reasoning mode and the broadest llama.cpp compatibility; a safe default."
+    homepage: https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF
+    verified: true
+    notes: >-
+      Architecture llama, so it works with any llama-cpp-python 0.3.x. Chat template is embedded, 128k context. The
+      Llama 3.2 Community License applies (acceptable-use policy; extra terms above 700M MAU). bartowski's mirror is
+      ungated, while the meta-llama original is gated.
+
+  - id: llm-phi-4-mini
+    name: "Phi-4-mini-instruct (Q4_K_M GGUF)"
+    type: llm
+    family: llm
+    source: huggingface
+    repo_id: unsloth/Phi-4-mini-instruct-GGUF
+    revision: main
+    files: ["Phi-4-mini-instruct-Q4_K_M.gguf"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: null
+    gated: false
+    license: mit
+    size_gb: 2.49
+    min_vram_gb: 4
+    pipeline: null
+    base_model_family: null
+    defaults: {n_ctx: 8192, temperature: 0.7, top_p: 0.9}
+    tags: [llm, prompt-assist, mit]
+    description: "Microsoft's 3.8B MIT-licensed instruct model, good at structured and JSON-style prompt expansion."
+    homepage: https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF
+    verified: true
+    notes: "GGUF architecture phi3 (supported by all recent llama-cpp-python). 128k context. No reasoning mode."
+
+  - id: llm-smollm3-3b
+    name: "SmolLM3 3B (Q4_K_M GGUF)"
+    type: llm
+    family: llm
+    source: huggingface
+    repo_id: ggml-org/SmolLM3-3B-GGUF
+    revision: main
+    files: ["SmolLM3-Q4_K_M.gguf"]
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: null
+    gated: false
+    license: apache-2.0
+    size_gb: 1.92
+    min_vram_gb: 3
+    pipeline: null
+    base_model_family: null
+    defaults: {n_ctx: 8192, temperature: 0.6, top_p: 0.95}
+    tags: [llm, prompt-assist, fully-open, small]
+    description: "Hugging Face's fully open 3B model (open data and recipe), with dual reasoning and non-reasoning modes."
+    homepage: https://huggingface.co/ggml-org/SmolLM3-3B-GGUF
+    verified: true
+    notes: >-
+      The filename is SmolLM3-Q4_K_M.gguf, without "3B". GGUF architecture is smollm3 (llama.cpp support since mid-2025).
+      Extended thinking is the default. For terse prompt rewriting, put "/no_think" in the system prompt. Published
+      by ggml-org, the llama.cpp maintainers.
+
+  # ---------------------------------------------------------------------------
+  # 6. Tiny pipelines for smoke tests (random weights; outputs are noise)
+  # ---------------------------------------------------------------------------
+
+  - id: test-tiny-sd
+    name: "Tiny SD pipeline (test)"
+    type: diffusers
+    family: sd15
+    source: huggingface
+    repo_id: hf-internal-testing/tiny-stable-diffusion-pipe
+    revision: main
+    files: null
+    allow_patterns: null
+    ignore_patterns: ["*.msgpack"]
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: null
+    size_gb: 0.01
+    min_vram_gb: 0
+    pipeline: StableDiffusionPipeline
+    base_model_family: null
+    defaults: {width: 64, height: 64, steps: 2, guidance_scale: 7.5}
+    tags: [test]
+    description: "Randomly initialized ~9 MB SD pipeline for CI and download/load smoke tests."
+    homepage: https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe
+    verified: true
+    notes: >-
+      Weights exist only as pickle .bin files (no safetensors), so loading needs use_safetensors=False (or the default
+      auto-detect) and torch>=2.6 for transformers' safe torch.load. Includes a tiny safety_checker. Runs on CPU, where
+      float32 is the better choice. No license tag.
+
+  - id: test-tiny-sdxl
+    name: "Tiny SDXL pipeline (test)"
+    type: diffusers
+    family: sdxl
+    source: huggingface
+    repo_id: hf-internal-testing/tiny-stable-diffusion-xl-pipe
+    revision: main
+    files: null
+    allow_patterns: null
+    ignore_patterns: ["*.msgpack", "*.onnx", "*openvino*", "vae_decoder/*", "vae_encoder/*"]
+    variant: null
+    torch_dtype: float16
+    gated: false
+    license: null
+    size_gb: 0.01
+    min_vram_gb: 0
+    pipeline: StableDiffusionXLPipeline
+    base_model_family: null
+    defaults: {width: 64, height: 64, steps: 2, guidance_scale: 5.0}
+    tags: [test]
+    description: "Randomly initialized ~11 MB SDXL pipeline (two text encoders) for smoke tests."
+    homepage: https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-xl-pipe
+    verified: true
+    notes: "Same .bin-only caveat as test-tiny-sd. The ignore list drops flax, onnx and openvino exports. No license tag."
+
+  - id: test-tiny-flux
+    name: "Tiny FLUX pipeline (test)"
+    type: diffusers
+    family: flux1
+    source: huggingface
+    repo_id: hf-internal-testing/tiny-flux-pipe
+    revision: main
+    files: null
+    allow_patterns: null
+    ignore_patterns: null
+    variant: null
+    torch_dtype: bfloat16
+    gated: false
+    license: null
+    size_gb: 0.001
+    min_vram_gb: 0
+    pipeline: FluxPipeline
+    base_model_family: null
+    defaults: {width: 32, height: 32, steps: 2, guidance_scale: 3.5}
+    tags: [test]
+    description: "~1.3 MB safetensors FLUX pipeline for testing the transformer/flow-matching code path (CLIP + T5 + DiT + VAE)."
+    homepage: https://huggingface.co/hf-internal-testing/tiny-flux-pipe
+    verified: true
+    notes: >-
+      Safetensors throughout, so it has no .bin caveat. The tiny VAE has a single block (vae_scale_factor 1), so very
+      small sizes such as 32x32 work. Use float32 on CPU. No license tag.

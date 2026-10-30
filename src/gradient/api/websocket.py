@@ -1,11 +1,13 @@
 # gradient-project-root/src/gradient/api/websocket.py
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import logging
 import json
+import logging
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
 
 # Basic connection manager (can be expanded later)
 class ConnectionManager:
@@ -31,7 +33,9 @@ class ConnectionManager:
                 logger.error(f"Failed to send message to {connection.client}: {e}")
                 # Optionally remove broken connections here
 
+
 manager = ConnectionManager()
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -50,7 +54,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 response = {
                     "status": "received",
                     "original_message": message_data,
-                    "reply": "Message processed."
+                    "reply": "Message processed.",
                 }
                 await websocket.send_text(json.dumps(response))
             except json.JSONDecodeError:
@@ -68,4 +72,4 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(f"WebSocket error for {websocket.client}: {e}", exc_info=e)
         # Ensure disconnect is called even on errors if possible
         if websocket in manager.active_connections:
-             manager.disconnect(websocket)
+            manager.disconnect(websocket)
