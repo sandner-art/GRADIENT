@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 (2026-10-30)
+
+### Lab
+- **ConceptAttention** for multi-modal DiTs (FLUX.1, FLUX.2, SD3/3.5), after Helbling et al., ICML 2025. Concept words run as extra tokens through the double-stream blocks with the text stream's weights. Maps are the softmax over concepts of image·concept attention outputs, averaged over chosen blocks and steps, with a segmentation view. Forward hooks only read activations, so images are bit-identical to normal renders. `POST /api/v1/lab/concept-attention`; `GET /api/v1/lab/layers` reports `concept_blocks`.
+- The Lab's attention tool picks ConceptAttention or cross-attention from the model family, with a manual switch.
+- Fixed: the cross-attention results crashed the page when the prompt contained a word twice (e.g. "a ... a ...").
+
+### Other
+- Models added by hand (diffusers folders) now report their pipeline and family in the Models API.
+- Log files are written to the project's `logs/` folder even when the server starts from another directory (previously logging fell back to the console with an error).
+
+### Tests
+- Tiny random FLUX.1, SD3.5-style (QK-norm, dual attention) and FLUX.2 [klein] (Qwen3) pipelines for offline tests.
+- A consistency test feeds the prompt's own tokens in as concepts and checks that the concept stream reproduces the model's text-stream attention outputs in every block (fp32, within 2e-5), for all three families.
+
 ## 0.3.0 (2026-10-30)
 
 ### Lab

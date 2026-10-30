@@ -113,3 +113,16 @@ export function globToRegExp(glob: string): RegExp {
 	}
 	return new RegExp(`^${re}$`);
 }
+
+/** Families with double-stream blocks that ConceptAttention supports. */
+export const CONCEPT_ATTENTION_FAMILIES = ['flux1', 'flux2', 'sd3'];
+/** UNet families with separate cross-attention layers. */
+export const CROSS_ATTENTION_FAMILIES = ['sd15', 'sdxl'];
+
+/** Which attention tool fits a model family; null when neither is known to work. */
+export function attentionMethodFor(family: string | null | undefined): 'concept' | 'cross' | null {
+	if (!family) return null;
+	if (CONCEPT_ATTENTION_FAMILIES.includes(family)) return 'concept';
+	if (CROSS_ATTENTION_FAMILIES.includes(family)) return 'cross';
+	return null;
+}

@@ -29,10 +29,17 @@ def colorize(values: np.ndarray, already_normalized: bool = False) -> Image.Imag
     return Image.fromarray(rgb.astype(np.uint8), "RGB")
 
 
-def overlay(image: Image.Image, values: np.ndarray, alpha: float = 0.55) -> Image.Image:
-    """Blend a heatmap of `values` (any resolution) over `image`."""
-    heat = colorize(values).resize(image.size, Image.Resampling.BILINEAR)
-    weight = Image.fromarray((normalize(values) * 255 * alpha).astype(np.uint8), "L").resize(
+def overlay(
+    image: Image.Image, values: np.ndarray, alpha: float = 0.55, absolute: bool = False
+) -> Image.Image:
+    """Blend a heatmap of `values` (any resolution) over `image`.
+
+    absolute=True takes values as already in [0, 1] (e.g. probabilities) instead of
+    stretching them between their own percentiles, so maps stay comparable.
+    """
+    v = np.clip(values, 0, 1) if absolute else normalize(values)
+    heat = colorize(v, already_normalized=True).resize(image.size, Image.Resampling.BILINEAR)
+    weight = Image.fromarray((v * 255 * alpha).astype(np.uint8), "L").resize(
         image.size, Image.Resampling.BILINEAR
     )
     return Image.composite(heat, image.convert("RGB"), weight)

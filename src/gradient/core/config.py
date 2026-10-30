@@ -109,8 +109,14 @@ def load_logging_config() -> None:
     """Loads the logging configuration and ensures the log directory exists."""
     global logging_config
     logging_config = load_yaml_config(LOGGING_CONFIG_PATH)
-    if logging_config:
-        (PROJECT_ROOT / "logs").mkdir(exist_ok=True)
+    # Log files are relative to the project, not to the folder the server was started from.
+    for handler in (logging_config.get("handlers") or {}).values():
+        filename = handler.get("filename") if isinstance(handler, dict) else None
+        if filename:
+            path = Path(filename)
+            path = path if path.is_absolute() else PROJECT_ROOT / path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handler["filename"] = str(path)
 
 
 load_settings()

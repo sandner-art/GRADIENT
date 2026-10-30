@@ -9,7 +9,7 @@
 
 [project]
 name = "gradient-workbench"
-version = "0.3.0"
+version = "0.4.0"
 description = "GRADIENT: Generative Research & Architectural Diffusion Interactive Exploration Navigation Toolkit"
 authors = [{ name = "Daniel Sandner", email = "news@sandner.art" }]
 license = "Apache-2.0"

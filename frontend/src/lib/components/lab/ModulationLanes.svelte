@@ -377,7 +377,7 @@
 						.join(', ')}
 				</p>
 			{/if}
-			{#each notes as n (n)}
+			{#each notes as n, i (i)}
 				<p class="{ui.noteBox} mt-2">{n}</p>
 			{/each}
 		</div>

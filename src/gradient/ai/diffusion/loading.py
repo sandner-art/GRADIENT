@@ -27,6 +27,7 @@ from diffusers import AutoencoderKL, AutoPipelineForImage2Image, DiffusionPipeli
 
 from gradient.core.config import get_setting
 from gradient.core.device import default_dtype, empty_cache, free_vram_bytes, get_device
+from gradient.core.families import family_from_class  # noqa: F401  (re-exported)
 from gradient.core.resource_manager import resource_manager
 from gradient.model_manager.inventory import dir_size, find_model_path, get_manifest_meta
 
@@ -56,33 +57,9 @@ SINGLE_FILE_PIPELINES: dict[str, str] = {
     "z-image-turbo": "ZImagePipeline",
 }
 
-_FAMILY_RULES: tuple[tuple[str, str], ...] = (
-    ("StableDiffusionXL", "sdxl"),
-    ("StableDiffusion3", "sd3"),
-    ("Flux2", "flux2"),
-    ("Flux", "flux1"),
-    ("QwenImage", "qwen-image"),
-    ("ZImage", "z-image"),
-    ("Chroma", "chroma"),
-    ("Sana", "sana"),
-    ("PixArt", "pixart"),
-    ("HiDream", "hidream"),
-    ("Kolors", "kolors"),
-    ("LatentConsistencyModel", "sd15"),
-    ("StableDiffusion", "sd15"),
-)
 # Families whose pipelines read `self._guidance_scale` on every step (classic CFG),
 # so the guidance value can be changed from a step callback.
 DYNAMIC_CFG_FAMILIES = {"sd15", "sdxl", "sd3", "pixart", "kolors"}
-
-
-def family_from_class(class_name: str | None) -> str | None:
-    if not class_name:
-        return None
-    for needle, family in _FAMILY_RULES:
-        if needle in class_name:
-            return family
-    return class_name.removesuffix("Pipeline").lower() or None
 
 
 @dataclass

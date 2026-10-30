@@ -432,8 +432,8 @@ class AttentionRecorder(Probe):
     def attach(self, pipe, entry, total_steps, kwargs):
         if getattr(pipe, "unet", None) is None:
             raise ValueError(
-                f"Attention maps currently support UNet models (SD 1.x, SDXL); {entry.pipeline_class} uses joint "
-                "attention (ConceptAttention support is planned)."
+                f"Cross-attention maps need a UNet model (SD 1.x, SDXL); {entry.pipeline_class} uses joint "
+                "attention. Use ConceptAttention instead (POST /api/v1/lab/concept-attention)."
             )
         self.total = max(1, total_steps)
         self.cond_half = float(kwargs.get("guidance_scale", 1.0) or 0) > 1.0

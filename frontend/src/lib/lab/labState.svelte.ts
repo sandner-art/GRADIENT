@@ -37,6 +37,9 @@ export const lab = $state<{ base: LabBase; lanes: ModulationLane[]; busy: string
 	busy: null
 });
 
+/** Model family by model name (from the Models API; null when unknown, e.g. a bare checkpoint). */
+export const modelFamilies = $state<Record<string, string | null>>({});
+
 /** Problems that would make every tool fail, so the UI can say so before calling the API. */
 export function baseProblem(): string | null {
 	const b = lab.base;

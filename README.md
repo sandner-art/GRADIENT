@@ -20,7 +20,7 @@ While powerful, existing generative AI tools often present fragmented workflows,
 3.  **Reproducible Research:** Integrating tools for systematic evaluation, logging, and analysis.
 4.  **Structural Creativity:** Offering capabilities to manipulate the generative process itself for unique artistic outcomes.
 
-## What works today (v0.3.0)
+## What works today (v0.4.0)
 
 *   **Any diffusers model family:** SD 1.5, SDXL, SD 3.5, FLUX.1, FLUX.2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2 and more (diffusers folders, Hub repos, and SD/SDXL/SD3/FLUX single-file checkpoints).
 *   **Built-in Model Manager:** a verified catalog of base models, LoRAs, VAEs, ControlNets and GGUF LLMs; one-click downloads from Hugging Face, any repo/file link, or direct URLs (e.g. Civitai), with progress, cancel and resume. Also on the command line.
@@ -30,12 +30,12 @@ While powerful, existing generative AI tools often present fragmented workflows,
 *   **Lab tab** for looking inside a generation:
     *   **Taylor preview:** one exact derivative of the image with respect to CFG (forward-mode autodiff through the whole sampler on SD 1.x/SDXL, finite differences elsewhere). A slider then previews nearby CFG values instantly, and you can check the prediction against a real render.
     *   **Structural modulation lanes:** switch or blend the prompt, change guidance, scale chosen attention layers or a LoRA weight for part of the denoising run. Lanes also work in every API generation request.
-    *   **Attention maps:** per-word cross-attention, computed only on the layers and steps you pick (SD 1.x/SDXL).
+    *   **Attention maps:** where each word or concept is in the image. **ConceptAttention** on FLUX.1, FLUX.2 and SD 3.5 locates any concept word (it doesn't have to be in the prompt) and shows a segmentation. Per-word cross-attention covers SD 1.x/SDXL. Both only read activations, so the image doesn't change.
     *   **Token ablation:** leave one word out, re-render with the same seed and measure the change in DINOv3 (or DINOv2) feature space. This causal influence measure works for every model family.
 *   **Memory modes** for small GPUs: full GPU, model offload, group offload with CUDA streams, sequential offload, picked automatically from model size and free VRAM.
 *   **Local LLM chat** (GGUF via llama.cpp) for prompt work.
 
-Further research features (latent-space navigator, ConceptAttention for DiT models, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
+Further research features (latent-space navigator, attribute directions, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
 
 ## Installation
 

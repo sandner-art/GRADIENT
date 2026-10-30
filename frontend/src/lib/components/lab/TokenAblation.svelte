@@ -161,7 +161,7 @@
 					<figcaption class={ui.help}>Full prompt</figcaption>
 				</figure>
 				<ol class="space-y-2">
-					{#each result.results as r, i (r.word)}
+					{#each result.results as r, i (i)}
 						<li class="flex gap-3 rounded border border-gray-200 p-2 dark:border-gray-700">
 							<img
 								src={ui.img(picture(r))}

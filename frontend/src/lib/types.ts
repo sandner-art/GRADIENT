@@ -303,6 +303,37 @@ export interface LayersResponse {
 	pipeline: string;
 	layers: LayerInfo[];
 	suggestions: string[];
+	/** Double-stream blocks usable by ConceptAttention (0 = not a supported DiT). */
+	concept_blocks: number;
+}
+
+export interface ConceptAttentionRequest {
+	base_request: Text2ImageRequest;
+	concepts?: string[] | null;
+	blocks?: string | null;
+	start?: number;
+	end?: number;
+}
+
+export interface ConceptMap {
+	concept: string;
+	color: string;
+	/** Fraction of image patches where this concept wins. */
+	area: number;
+	mean_probability: number;
+	heatmap_base64: string;
+	overlay_base64: string;
+}
+
+export interface ConceptAttentionResponse {
+	image_base64: string;
+	seed: number;
+	segmentation_base64: string;
+	concepts: ConceptMap[];
+	blocks_recorded: number[];
+	num_blocks: number;
+	steps_recorded: number;
+	performance_ms: number;
 }
 
 export interface RuntimeStatus {

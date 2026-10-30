@@ -4,8 +4,9 @@
 	import { onMount } from 'svelte';
 	import { get } from '#lib/apiClient.js';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
-	import { lab } from '#lib/lab/labState.svelte.js';
+	import { lab, modelFamilies } from '#lib/lab/labState.svelte.js';
 	import * as ui from '#lib/lab/ui.js';
+	import type { LocalModel } from '#lib/types.js';
 	import { plainSchedulerName } from '#lib/utils/format.js';
 
 	let models = $state<string[]>([]);
@@ -26,6 +27,12 @@
 		schedulers = s.filter((x) => x !== 'Default');
 		loras = l;
 		if (!b.model_id && models.length) b.model_id = models[0];
+		const local = await Promise.all(
+			['diffusers', 'checkpoints'].map((t) =>
+				get<LocalModel[]>(`/models/local?type=${t}`).catch((): LocalModel[] => [])
+			)
+		);
+		for (const m of local.flat()) modelFamilies[m.name] = m.family ?? null;
 	});
 
 	function randomSeed() {

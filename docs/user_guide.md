@@ -89,9 +89,21 @@ Computes the derivative of the whole image with respect to the guidance scale, �
 API: `POST /api/v1/lab/taylor-preview` with `{"base_request": {...}, "method": "auto" | "jvp" | "finite_difference", "delta": 0.5}`. The tangent comes back as an 8-bit PNG: value = 128 + 127·t / `tangent_scale`, with t in image units (0–1) per unit of CFG.
 
 ### Attention maps
-Shows where each word of the prompt is attended to, averaged over the chosen cross-attention layers and steps (SD 1.x/SDXL). Only the selected layers compute explicit attention probabilities, and only on the selected steps; everything else keeps the fast attention kernels, and the image matches a normal render up to rounding. Use an early step range (0–30%) to see layout, a late one for detail. The bar under each word compares how much attention it receives; each map is normalized on its own. Maps for DiT models (FLUX, SD 3.5) are planned with ConceptAttention.
+Shows where each word or concept is in the image. The tool picks the method from the model family; the switch above it overrides that.
 
-API: `POST /api/v1/lab/attention-maps` with `{"base_request": {...}, "words": ["lighthouse"], "layers": "*attn2", "start": 0.0, "end": 1.0}`.
+**ConceptAttention** (FLUX.1, FLUX.2, SD 3.5; Helbling et al., ICML 2025) works on multi-modal DiTs, where text and image share one attention:
+
+- Each concept word becomes an extra token that runs through the double-stream blocks with the text stream's own weights. Concepts attend to the image and to each other; the image and prompt never attend to the concepts, so the image is bit-identical to a normal render. The extra cost is a few tokens per block.
+- The map for a block is the softmax over concepts of the dot product between image and concept attention outputs, averaged over the chosen blocks and steps. In every patch the probabilities add up to 1, so all maps share one scale, and the segmentation view colours each patch by its strongest concept.
+- Concepts don't have to occur in the prompt. List the things you expect plus "background", since a concept that is absent still takes probability where nothing else fits. Single words work best: each concept is one token (the word's first T5 token on FLUX.1, its last token on SD 3.5's CLIP and on FLUX.2's Qwen3/Mistral encoder).
+- *Blocks* takes indices such as `9-18`, `12,15,18` or `all`; the default is the deeper half, as in the paper's experiments (FLUX.1 has 19 double-stream blocks, FLUX.2 [dev] 8). Deeper blocks localize better than early ones, and the paper found averaging all blocks best for segmentation, so `all` is worth a try. *Count blocks* shows the number for the selected model.
+- Only the double-stream blocks are used; FLUX's single-stream blocks are not. Other families (Qwen-Image, Z-Image, Chroma) are not supported yet; token ablation works for every model.
+
+**Cross-attention** (SD 1.x/SDXL) shows where each word of the prompt is attended to, averaged over the chosen cross-attention layers and steps. Only the selected layers compute explicit attention probabilities, and only on the selected steps; everything else keeps the fast attention kernels, and the image matches a normal render up to rounding. The bar under each word compares how much attention it receives; each map is normalized on its own.
+
+For both, use an early step range (0–30%) to see layout and a late one for detail.
+
+API: `POST /api/v1/lab/concept-attention` with `{"base_request": {...}, "concepts": ["lighthouse", "sea", "sky", "background"], "blocks": null, "start": 0.0, "end": 1.0}`, and `POST /api/v1/lab/attention-maps` with `{"base_request": {...}, "words": ["lighthouse"], "layers": "*attn2", "start": 0.0, "end": 1.0}`.
 
 ### Token ablation
 Removes one word at a time, re-renders with the same seed and measures how far the image moved in the feature space of a vision encoder. Unlike attention maps it measures the causal effect of the word, and it works for every model family. It costs one render per word, plus one.

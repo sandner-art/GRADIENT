@@ -12,11 +12,14 @@ from fastapi import APIRouter, Body, Query
 from gradient.ai.diffusion.loading import get_loaded_entry
 from gradient.ai.lab.ablation import token_ablation
 from gradient.ai.lab.attention import attention_maps
+from gradient.ai.lab.concept_attention import concept_attention_maps, concept_support
 from gradient.ai.lab.models import (
     AblationRequest,
     AblationResponse,
     AttentionMapRequest,
     AttentionMapResponse,
+    ConceptAttentionRequest,
+    ConceptAttentionResponse,
     TaylorRequest,
     TaylorResponse,
 )
@@ -55,6 +58,18 @@ async def handle_attention_maps(request: AttentionMapRequest = Body(...)):
 
 
 @router.post(
+    "/lab/concept-attention",
+    response_model=ConceptAttentionResponse,
+    summary="ConceptAttention saliency maps and segmentation (FLUX.1, FLUX.2, SD3/3.5)",
+)
+async def handle_concept_attention(request: ConceptAttentionRequest = Body(...)):
+    try:
+        return await run_gpu_task(concept_attention_maps, request)
+    except Exception as e:
+        raise to_http_error(e, "concept attention") from e
+
+
+@router.post(
     "/lab/token-ablation",
     response_model=AblationResponse,
     summary="Leave-one-word-out influence, measured with DINO features",
@@ -80,9 +95,12 @@ async def handle_layers(model_id: str = Query(...)):
     suggestions = [f"{p}.*" for p in prefixes]
     if any(layer["kind"] == "cross" for layer in layers):
         suggestions = ["*attn2", *[f"{p}.*attn2" for p in prefixes], *suggestions]
+    support = concept_support(entry.pipeline)
     return {
         "model_id": model_id,
         "pipeline": entry.pipeline_class,
         "layers": layers,
         "suggestions": suggestions,
+        # ConceptAttention: number of double-stream blocks (0 = use cross-attention maps instead)
+        "concept_blocks": support[1] if support else 0,
     }

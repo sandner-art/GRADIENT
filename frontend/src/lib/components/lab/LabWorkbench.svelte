@@ -1,7 +1,7 @@
 <!-- frontend/src/lib/components/lab/LabWorkbench.svelte -->
 <!-- The Lab tab: shared base settings on the left, one research tool on the right. -->
 <script lang="ts">
-	import AttentionMaps from './AttentionMaps.svelte';
+	import AttentionTool from './AttentionTool.svelte';
 	import LabBaseSettings from './LabBaseSettings.svelte';
 	import LabProgress from './LabProgress.svelte';
 	import ModulationLanes from './ModulationLanes.svelte';
@@ -12,7 +12,11 @@
 	const tools: { id: Tool; label: string; hint: string }[] = [
 		{ id: 'taylor', label: 'Taylor preview', hint: 'Preview other CFG values instantly' },
 		{ id: 'modulation', label: 'Modulation lanes', hint: 'Change things for part of the run' },
-		{ id: 'attention', label: 'Attention maps', hint: 'Where each word acts' },
+		{
+			id: 'attention',
+			label: 'Attention maps',
+			hint: 'Where each word or concept is in the image'
+		},
 		{ id: 'ablation', label: 'Token ablation', hint: 'How much each word matters' }
 	];
 	let tool = $state<Tool>('taylor');
@@ -48,7 +52,7 @@
 		<!-- Keep every tool mounted so results survive switching between them. -->
 		<div hidden={tool !== 'taylor'}><TaylorPreview /></div>
 		<div hidden={tool !== 'modulation'}><ModulationLanes /></div>
-		<div hidden={tool !== 'attention'}><AttentionMaps /></div>
+		<div hidden={tool !== 'attention'}><AttentionTool /></div>
 		<div hidden={tool !== 'ablation'}><TokenAblation /></div>
 	</section>
 </div>

@@ -100,3 +100,43 @@ class AblationResponse(BaseModel):
     feature_note: str | None = None
     results: list[AblationResult]
     performance_ms: float
+
+
+class ConceptAttentionRequest(BaseModel):
+    base_request: Text2ImageRequest
+    concepts: list[str] | None = Field(
+        default=None,
+        description="Concept words to locate (they need not occur in the prompt; single words work best). "
+        "Default: the prompt's content words plus 'background'",
+    )
+    blocks: str | None = Field(
+        default=None,
+        description="Double-stream blocks to average, e.g. '9-18', '12,15,18' or 'all' "
+        "(default: the deeper half)",
+    )
+    start: float = Field(default=0.0, ge=0, le=1, description="First step to record (fraction)")
+    end: float = Field(
+        default=1.0, ge=0, le=1, description="Stop recording at this fraction of the steps"
+    )
+
+
+class ConceptMap(BaseModel):
+    concept: str
+    color: str = Field(..., description="Colour of this concept in the segmentation image")
+    area: float = Field(..., description="Fraction of image patches where this concept wins")
+    mean_probability: float = Field(..., description="Mean concept probability over the image")
+    heatmap_base64: str
+    overlay_base64: str
+
+
+class ConceptAttentionResponse(BaseModel):
+    image_base64: str
+    seed: int
+    segmentation_base64: str = Field(
+        ..., description="Image tinted by the winning concept per patch"
+    )
+    concepts: list[ConceptMap]
+    blocks_recorded: list[int]
+    num_blocks: int = Field(..., description="Double-stream blocks in this model")
+    steps_recorded: int
+    performance_ms: float

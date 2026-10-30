@@ -1,11 +1,13 @@
 # src/gradient/model_manager/inventory.py
 """Discover, describe and delete locally installed models."""
 
+import json
 import logging
 import shutil
 from pathlib import Path
 
 from gradient.core.config import get_model_search_dirs, get_model_subdir_name
+from gradient.core.families import family_from_class
 
 from . import manifest
 from .schemas import GenerationDefaults, LocalModel, ModelType
@@ -67,6 +69,23 @@ def manifest_key(model_type: str, name: str) -> str:
     return f"{get_model_subdir_name(model_type)}/{name}"
 
 
+def _pipeline_info(folder: Path) -> dict[str, str]:
+    """Pipeline class and family from a diffusers folder's model_index.json (models added by hand)."""
+    try:
+        cls = json.loads((folder / "model_index.json").read_text(encoding="utf-8")).get(
+            "_class_name"
+        )
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(cls, str):
+        return {}
+    info = {"pipeline": cls}
+    family = family_from_class(cls)
+    if family:
+        info["family"] = family
+    return info
+
+
 def list_local_models(model_type: ModelType, with_sizes: bool = True) -> list[LocalModel]:
     entries = manifest.all_entries()
     found: dict[str, LocalModel] = {}
@@ -83,6 +102,8 @@ def list_local_models(model_type: ModelType, with_sizes: bool = True) -> list[Lo
             if fmt is None or item.name in found:
                 continue  # first search dir wins on name clashes
             meta = entries.get(manifest_key(model_type, item.name)) or {}
+            if fmt == "diffusers" and not meta.get("pipeline"):
+                meta = {**meta, **_pipeline_info(item)}
             defaults = meta.get("defaults")
             found[item.name] = LocalModel(
                 name=item.name,

@@ -15,7 +15,9 @@
 	let end = $state(1);
 	let show = $state<'overlay' | 'heatmap'>('overlay');
 	let result = $state<AttentionMapResponse | null>(null);
-	let selected = $state<string | null>(null);
+	let resultModel = $state('');
+	// index into result.maps: a prompt can contain the same word twice ("a ... a ...")
+	let selected = $state(0);
 	let error = $state<string | null>(null);
 	let layerError = $state<string | null>(null);
 
@@ -23,7 +25,7 @@
 	const matched = $derived(countMatches(known, layers));
 	const [firstStep, lastStep] = $derived(laneSteps(start, end, lab.base.num_inference_steps));
 	const maxShare = $derived(Math.max(1e-9, ...(result?.maps.map((m) => m.attention_share) ?? [0])));
-	const focus = $derived(result?.maps.find((m) => m.word === selected) ?? null);
+	const focus = $derived(result?.maps[selected] ?? null);
 
 	async function listLayers() {
 		layerError = null;
@@ -51,7 +53,8 @@
 		await runLabJob('Recording cross-attention…', async () => {
 			try {
 				result = await post<AttentionMapResponse>('/lab/attention-maps', body);
-				selected = result.maps[0]?.word ?? null;
+				resultModel = body.base_request.model_id;
+				selected = 0;
 			} catch (e) {
 				error = apiErrorMessage(e);
 			}
@@ -61,7 +64,7 @@
 
 <div class="space-y-4">
 	<div class={ui.card}>
-		<h2 class={ui.heading}>Attention maps</h2>
+		<h2 class={ui.heading}>Cross-attention maps</h2>
 		<p class="{ui.muted} mt-1">
 			Where each word of the prompt is attended to. Probabilities are computed only on the selected
 			cross-attention layers and steps; the rest of the model runs on its fast attention, and the
@@ -149,7 +152,7 @@
 		<div class={ui.card}>
 			<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 				<p class={ui.muted}>
-					seed {result.seed} · {result.layers_recorded.length} layers ·
+					{resultModel} · seed {result.seed} · {result.layers_recorded.length} layers ·
 					{(result.performance_ms / 1000).toFixed(1)} s
 				</p>
 				<div class="flex gap-1" role="group" aria-label="Map style">
@@ -188,13 +191,13 @@
 			</div>
 
 			<div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-				{#each result.maps as m (m.word)}
+				{#each result.maps as m, i (`${m.word}@${m.token_positions[0]}`)}
 					<button
 						type="button"
 						class="overflow-hidden rounded border border-gray-200 text-left dark:border-gray-600"
-						class:ring-2={m.word === selected}
-						class:ring-indigo-500={m.word === selected}
-						onclick={() => (selected = m.word)}
+						class:ring-2={i === selected}
+						class:ring-indigo-500={i === selected}
+						onclick={() => (selected = i)}
 					>
 						<img
 							src={ui.img(show === 'overlay' ? m.overlay_base64 : m.heatmap_base64)}

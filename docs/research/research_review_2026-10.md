@@ -33,13 +33,14 @@ GRADIENT's thesis still holds, and few tools serve it: a local **lab for diffusi
 | Blocking GPU work on the event loop | **Fixed**: GPU work runs in a worker thread behind a single GPU lock (first step toward the task queue) |
 | Reproducibility metadata (hashes, versions, approximation flag) | **Partly**: pipeline class, family, dtype, memory mode, scheduler and applied flags are logged; hashes and versions remain open |
 
-### Implemented in v0.3.0 (Lab tab, `/api/v1/lab/*`)
+### Implemented in v0.3.0–v0.4.0 (Lab tab, `/api/v1/lab/*`)
 
-| Roadmap item | Status in v0.3.0 |
+| Roadmap item | Status |
 |---|---|
 | Exact JVP sensitivity (§5 item 2, step 2) | **Done for SD 1.x/SDXL**: forward-mode AD (`torch.autograd.forward_ad` dual numbers) through the full CFG sampler, UNet and VAE under math-mode SDPA; matches finite differences (cosine > 0.999 in tests). Drives the **Taylor preview** (instant CFG slider, checked against a real render). Other families use finite differences; JVP for flow-matching DiTs is open |
 | σ-timeline structural modulation (M3) | **Done as lanes** on every request: prompt replace/blend, guidance, attention-layer output scale, LoRA weight, each over a step-fraction window, for any family exposing step callbacks. Open: lanes on arbitrary module inputs, per-token/region masks, continuous curves instead of windows |
-| Cross-attention attribution | **Done for UNet models**: recording processor computes explicit softmax probabilities only on selected layers and steps. Open: ConceptAttention for DiT (FLUX, SD3.5) joint attention |
+| Cross-attention attribution | **Done for UNet models** (v0.3.0): recording processor computes explicit softmax probabilities only on selected layers and steps |
+| ConceptAttention for joint-attention DiTs (§5 item 4) | **Done for FLUX.1, FLUX.2, SD3/3.5** (v0.4.0): concept tokens run through the double-stream blocks via read-only forward hooks (images bit-identical); output-space maps, softmax over concepts, averaged over blocks/steps; segmentation view. A test verifies that the concept stream reproduces the model's own text-stream attention outputs when fed the prompt tokens. Open: single-stream blocks, Qwen-Image/Z-Image/Chroma, real-image mode (encode + noise to σ), segmentation benchmarks |
 | Token ablation scored in feature space | **Done, model-agnostic**: leave-one-word-out (word removal, or embedding masking on SD/SDXL) with DINOv3 ViT-S/16 patch/CLS distances, DINOv2-small fallback. Open: batched ablation, region-restricted scores, comparison against attention maps on a prompt set |
 
 ## 2. Code reality check (at `afc072c`)
@@ -239,6 +240,7 @@ Ship the instrumentation as Modular Diffusers custom blocks too, so it works ins
 - Mellon + Modular Diffusers: https://huggingface.co/docs/diffusers/v0.39.0/modular_diffusers/mellon
 - SD.Next changelog (guider/caching stacks): https://raw.githubusercontent.com/vladmandic/sdnext/master/CHANGELOG.md
 - ConceptAttention (ICML 2025): https://arxiv.org/abs/2502.04320
+- ConceptAttention reference code: https://github.com/helblazer811/ConceptAttention
 - FluxSpace (CVPR 2025): https://arxiv.org/abs/2412.09611
 - SliderSpace (ICCV 2025): https://arxiv.org/abs/2502.01639
 - FlowEdit (ICCV 2025): https://arxiv.org/abs/2412.08629

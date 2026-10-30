@@ -44,6 +44,37 @@ def tiny_sd(workspace: Path, tiny_sd_source: Path) -> str:
     return "tiny-sd"
 
 
+def _installed(workspace: Path, name: str, builder) -> str:
+    target = workspace / "models" / "diffusers" / name
+    if not target.exists():
+        builder(target)
+    return name
+
+
+@pytest.fixture(scope="session")
+def tiny_flux(workspace: Path) -> str:
+    """Tiny random FLUX.1 pipeline (4 double-stream blocks)."""
+    from helpers import build_tiny_flux
+
+    return _installed(workspace, "tiny-flux", build_tiny_flux)
+
+
+@pytest.fixture(scope="session")
+def tiny_sd3(workspace: Path) -> str:
+    """Tiny random SD3.5-style pipeline (3 joint blocks, QK-norm, one dual-attention block)."""
+    from helpers import build_tiny_sd3
+
+    return _installed(workspace, "tiny-sd3", build_tiny_sd3)
+
+
+@pytest.fixture(scope="session")
+def tiny_flux2(workspace: Path) -> str:
+    """Tiny random FLUX.2 [klein] pipeline (Qwen3 text encoder, 3 double-stream blocks)."""
+    from helpers import build_tiny_flux2_klein
+
+    return _installed(workspace, "tiny-flux2", build_tiny_flux2_klein)
+
+
 @pytest.fixture(scope="session")
 def fake_hub():
     from fake_hub import FakeHub

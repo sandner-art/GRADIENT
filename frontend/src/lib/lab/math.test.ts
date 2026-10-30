@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	attentionMethodFor,
 	cleanLane,
 	composeTaylor,
 	countMatches,
@@ -88,6 +89,7 @@ describe('layer globs', () => {
 		model_id: 'm',
 		pipeline: 'StableDiffusionPipeline',
 		suggestions: [],
+		concept_blocks: 0,
 		layers: [
 			{ name: 'down_blocks.0.attentions.0.transformer_blocks.0.attn1', kind: 'self' },
 			{ name: 'down_blocks.0.attentions.0.transformer_blocks.0.attn2', kind: 'cross' },
@@ -104,5 +106,16 @@ describe('layer globs', () => {
 		expect(countMatches(null, '*')).toBeNull();
 		expect(globToRegExp('a.b(c)').test('a.b(c)')).toBe(true);
 		expect(globToRegExp('a.b').test('aXb')).toBe(false);
+	});
+});
+
+describe('attentionMethodFor', () => {
+	it('picks ConceptAttention for DiTs and cross-attention for UNets', () => {
+		expect(attentionMethodFor('flux1')).toBe('concept');
+		expect(attentionMethodFor('flux2')).toBe('concept');
+		expect(attentionMethodFor('sd3')).toBe('concept');
+		expect(attentionMethodFor('sdxl')).toBe('cross');
+		expect(attentionMethodFor('qwen-image')).toBeNull();
+		expect(attentionMethodFor(null)).toBeNull();
 	});
 });
