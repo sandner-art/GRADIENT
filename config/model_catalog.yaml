@@ -1105,6 +1105,60 @@ models:
       by ggml-org, the llama.cpp maintainers.
 
   # ---------------------------------------------------------------------------
+  # 5b. Vision encoders for Lab measurements (token ablation distances)
+  # ---------------------------------------------------------------------------
+
+  - id: dinov3-vits16
+    name: "DINOv3 ViT-S/16"
+    type: vision
+    family: dinov3
+    source: huggingface
+    repo_id: facebook/dinov3-vits16-pretrain-lvd1689m
+    revision: main
+    files: null
+    allow_patterns: ["*.json", "*.safetensors"]
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float32
+    gated: true
+    license: dinov3-license
+    size_gb: 0.09
+    min_vram_gb: 1
+    pipeline: DINOv3ViTModel
+    base_model_family: null
+    defaults: null
+    tags: [vision, lab, recommended]
+    description: "Meta's 2025 self-supervised ViT; dense patch features used to measure where an image changed."
+    homepage: https://huggingface.co/facebook/dinov3-vits16-pretrain-lvd1689m
+    verified: true
+    notes: "Gated: request access on the model page (Meta reviews the form), then set a Hugging Face token. Size is approximate."
+
+  - id: dinov2-small
+    name: "DINOv2 small"
+    type: vision
+    family: dinov2
+    source: huggingface
+    repo_id: facebook/dinov2-small
+    revision: main
+    files: null
+    allow_patterns: ["*.json", "*.safetensors"]
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float32
+    gated: false
+    license: apache-2.0
+    size_gb: 0.09
+    min_vram_gb: 1
+    pipeline: Dinov2Model
+    base_model_family: null
+    defaults: null
+    tags: [vision, lab]
+    description: "Ungated predecessor of DINOv3; GRADIENT uses it automatically when DINOv3 is not accessible."
+    homepage: https://huggingface.co/facebook/dinov2-small
+    verified: true
+    notes: "Size is approximate."
+
+  # ---------------------------------------------------------------------------
   # 6. Tiny pipelines for smoke tests (random weights; outputs are noise)
   # ---------------------------------------------------------------------------
 

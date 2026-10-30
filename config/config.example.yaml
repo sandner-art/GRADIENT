@@ -1,0 +1,21 @@
+# Personal settings. Copy this file to config/config.yaml and uncomment what you need.
+# config/config.yaml is not tracked by git, so updates never overwrite it.
+# Every key is optional; anything left out uses config/default_settings.yaml.
+# Environment variables (see .env.example) override both files.
+
+# app:
+#   port: 8000
+
+# paths:
+#   models:
+#     # The first folder is where downloads go. Lists replace the default list.
+#     search_dirs:
+#       - "./data/models"
+#       - "D:/ai_models"
+
+# performance:
+#   memory_mode: "auto"        # auto | gpu | balanced | low | minimal
+#   attention_backend: null    # e.g. "sage", "flash"
+
+# lab:
+#   feature_model: "facebook/dinov2-small"   # token-ablation distances without the gated DINOv3

@@ -120,7 +120,16 @@ async def run_xyz_grid(request: XYZGridRequest) -> list[XYZGridResult]:
     if "seed" not in axis_params and base_params_dict.get("seed") is None:
         base_params_dict["seed"] = resolve_seed(None)
 
-    for i, combo in enumerate(value_combinations):
+    # Generate all cells of one model before switching models (avoids reloading a model per
+    # cell); results are put back into the original grid order afterwards.
+    order = list(range(len(value_combinations)))
+    if "model_id" in axis_params:
+        model_pos = axis_params.index("model_id")
+        order.sort(key=lambda idx: str(value_combinations[idx][model_pos]))
+    cell_results: dict[int, XYZGridResult] = {}
+
+    for i in order:
+        combo = value_combinations[i]
         params_for_run = base_params_dict.copy()
         current_axis_values = {}
 
@@ -179,7 +188,9 @@ async def run_xyz_grid(request: XYZGridRequest) -> list[XYZGridResult]:
             grid_status = "failed"
             grid_error_details.append(f"Cell {i + 1}: {error_msg}")
 
-        results.append(grid_cell_result)
+        cell_results[i] = grid_cell_result
+
+    results.extend(cell_results[i] for i in range(len(value_combinations)))
 
     # --- Update Final Grid Status ---
     end_time = time.time()

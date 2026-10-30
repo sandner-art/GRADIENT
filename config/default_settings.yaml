@@ -39,6 +39,7 @@ paths:
     lora: "lora"
     controlnet: "controlnet"
     embeddings: "embeddings"
+    vision: "vision"          # feature encoders (DINOv3/DINOv2) for Lab measurements
 
 performance:
   # Device override: null (auto: cuda > mps > xpu > cpu), "cuda", "cuda:1", "mps", "cpu" ...
@@ -57,6 +58,11 @@ performance:
   # Optional diffusers attention backend, e.g. "flash", "sage", "_native_cudnn".
   # null keeps PyTorch SDPA (a good default everywhere).
   attention_backend: null
+
+lab:
+  # Vision encoder for token ablation distances (name in models/vision or a Hub id).
+  # DINOv3 is gated by Meta; GRADIENT falls back to facebook/dinov2-small if unavailable.
+  feature_model: "facebook/dinov3-vits16-pretrain-lvd1689m"
 
 downloads:
   catalog_file: "./config/model_catalog.yaml"

@@ -20,17 +20,22 @@ While powerful, existing generative AI tools often present fragmented workflows,
 3.  **Reproducible Research:** Integrating tools for systematic evaluation, logging, and analysis.
 4.  **Structural Creativity:** Offering capabilities to manipulate the generative process itself for unique artistic outcomes.
 
-## What works today (v0.2.0)
+## What works today (v0.3.0)
 
 *   **Any diffusers model family:** SD 1.5, SDXL, SD 3.5, FLUX.1, FLUX.2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2 and more (diffusers folders, Hub repos, and SD/SDXL/SD3/FLUX single-file checkpoints).
 *   **Built-in Model Manager:** a verified catalog of base models, LoRAs, VAEs, ControlNets and GGUF LLMs; one-click downloads from Hugging Face, any repo/file link, or direct URLs (e.g. Civitai), with progress, cancel and resume. Also on the command line.
 *   **Text-to-image, image-to-image, XYZ grids** with presets, LoRAs, embeddings, scheduler choice, **custom sigma schedules** and **scheduled CFG** (`linear(9,3)`, keyframes `9@0,4@20`).
 *   **Reproducibility:** every image is generated with its own seeded generator, saved with full parameters in PNG metadata and logged to a local SQLite experiment database.
 *   **Parameter sensitivity maps** (where in the image does CFG or a LoRA weight matter?) by central finite differences.
+*   **Lab tab** for looking inside a generation:
+    *   **Taylor preview:** one exact derivative of the image with respect to CFG (forward-mode autodiff through the whole sampler on SD 1.x/SDXL, finite differences elsewhere). A slider then previews nearby CFG values instantly, and you can check the prediction against a real render.
+    *   **Structural modulation lanes:** switch or blend the prompt, change guidance, scale chosen attention layers or a LoRA weight for part of the denoising run. Lanes also work in every API generation request.
+    *   **Attention maps:** per-word cross-attention, computed only on the layers and steps you pick (SD 1.x/SDXL).
+    *   **Token ablation:** leave one word out, re-render with the same seed and measure the change in DINOv3 (or DINOv2) feature space. This causal influence measure works for every model family.
 *   **Memory modes** for small GPUs: full GPU, model offload, group offload with CUDA streams, sequential offload, picked automatically from model size and free VRAM.
 *   **Local LLM chat** (GGUF via llama.cpp) for prompt work.
 
-Planned research features (latent-space navigator, structural modulation timeline, attention/token attribution, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
+Further research features (latent-space navigator, ConceptAttention for DiT models, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
 
 ## Installation
 
@@ -58,6 +63,18 @@ The installer:
 4. builds the web UI (if Node.js is available).
 
 Options: `--cpu`, `--legacy-gpu`, `--with-llm` (adds llama-cpp-python, compiled locally), `--dev`, `--no-frontend` (PowerShell: `-Cpu`, `-LegacyGpu`, `-WithLlm`, `-Dev`, `-NoFrontend`).
+
+### Updating
+
+```bash
+./update.sh                 # newest release
+./update.sh --main          # latest development version (main branch)
+./update.sh --check         # only show whether an update is available
+```
+
+On Windows: `powershell -ExecutionPolicy Bypass -File update.ps1` (options `-Main`, `-Check`).
+
+The update script fetches the new version with git, then re-runs the installer, so dependencies and the web UI are rebuilt too. Installer options pass through (`./update.sh --legacy-gpu`; PowerShell `-LegacyGpu`). Models, outputs, the experiment database and `config/config.yaml` are not tracked by git, so updates keep them. If you edited files that are tracked, the script lists them and stops, so nothing is overwritten.
 
 ### PyTorch and your GPU
 
@@ -124,7 +141,7 @@ Add more search folders (e.g. a shared models disk) in `config/config.yaml` unde
 
 ## Configuration
 
-Defaults are in [`config/default_settings.yaml`](config/default_settings.yaml); put overrides in `config/config.yaml` or environment variables (see [`.env.example`](.env.example)). Most useful:
+Defaults are in [`config/default_settings.yaml`](config/default_settings.yaml); put overrides in `config/config.yaml` (start from [`config/config.example.yaml`](config/config.example.yaml)) or environment variables (see [`.env.example`](.env.example)). Most useful:
 
 | Setting | Env var | Purpose |
 |---|---|---|

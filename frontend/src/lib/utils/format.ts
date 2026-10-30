@@ -34,3 +34,21 @@ export function etaSeconds(total?: number | null, done?: number, speed?: number)
 export function plainSchedulerName(value?: string | null): string | null {
 	return value && /^[A-Za-z0-9_]+$/.test(value) ? value : null;
 }
+
+/** Readable message for an error thrown by apiClient (FastAPI detail string or validation list). */
+export function apiErrorMessage(e: unknown): string {
+	if (typeof e === 'object' && e !== null && 'status' in e) {
+		const { status, detail } = e as { status: number; detail?: unknown };
+		if (typeof detail === 'string') return status > 0 ? `Error ${status}: ${detail}` : detail;
+		if (Array.isArray(detail))
+			return `Invalid request: ${detail
+				.map((d: { loc?: unknown[]; msg?: string }) => {
+					const where = (d.loc ?? []).filter((p) => p !== 'body').join('.');
+					return where ? `${where}: ${d.msg}` : d.msg;
+				})
+				.join('; ')}`;
+		if (detail) return `Error ${status}: ${JSON.stringify(detail)}`;
+		return `Error ${status}`;
+	}
+	return e instanceof Error ? e.message : String(e);
+}

@@ -1,8 +1,8 @@
 # src/gradient/ai/diffusion/models.py
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator  # Import ConfigDict for Pydantic v2
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # --- Helper Models ---
 
@@ -18,6 +18,54 @@ class LoRAParameter(BaseModel):
 
     # Add Pydantic v2 config if needed, e.g., for ORM mode if saved to DB directly
     # model_config = ConfigDict(from_attributes=True)
+
+
+class ModulationLane(BaseModel):
+    """One lane on the denoising timeline, active for steps in [start, end) (fractions of the run)."""
+
+    type: Literal["guidance", "prompt", "attention_scale", "lora_weight"] = Field(
+        ..., description="What the lane changes while active"
+    )
+    start: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Start of the lane as a fraction of the steps"
+    )
+    end: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="End of the lane (exclusive) as a fraction of the steps",
+    )
+    value: float | None = Field(
+        default=None,
+        description="guidance: CFG value; attention_scale: output scale (0 skips the layers); lora_weight: weight; prompt: blend factor (blend mode)",
+    )
+    prompt: str | None = Field(
+        default=None, description="prompt lanes: the prompt to switch/blend to"
+    )
+    mode: Literal["replace", "blend"] = Field(
+        default="replace", description="prompt lanes: replace or blend the embeddings"
+    )
+    targets: str | None = Field(
+        default=None,
+        description="attention_scale lanes: glob over attention layer names, e.g. 'up_blocks.*attn2' or 'transformer_blocks.1?.attn'",
+    )
+    lora_index: int | None = Field(
+        default=None, ge=0, description="lora_weight lanes: index into the request's loras"
+    )
+
+    @model_validator(mode="after")
+    def _check(self) -> "ModulationLane":
+        if self.end <= self.start:
+            raise ValueError("lane end must be greater than start")
+        if self.type in ("guidance", "attention_scale", "lora_weight") and self.value is None:
+            raise ValueError(f"{self.type} lanes need a value")
+        if self.type == "prompt" and not self.prompt:
+            raise ValueError("prompt lanes need a prompt")
+        if self.type == "attention_scale" and not self.targets:
+            raise ValueError("attention_scale lanes need targets (a layer-name pattern)")
+        if self.type == "lora_weight" and self.lora_index is None:
+            raise ValueError("lora_weight lanes need lora_index")
+        return self
 
 
 # --- Base Diffusion Task Model ---
@@ -68,6 +116,11 @@ class DiffusionTaskBase(BaseModel):
         description="List of Textual Inversion embedding triggers/filenames to ensure are loaded (if backend supports explicit loading).",
     )
     # --- LoRA/Embedding Fields --- ^^^
+
+    modulation: list[ModulationLane] | None = Field(
+        default=None,
+        description="Structural modulation lanes applied during denoising (see docs/user_guide.md)",
+    )
 
     # Validation for height/width multiples of 8
     @field_validator("height", "width")

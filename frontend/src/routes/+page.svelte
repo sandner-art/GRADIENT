@@ -8,16 +8,18 @@
 	import XYZGridForm from '#lib/components/XYZGridForm.svelte';
 	import XYZGridDisplay from '#lib/components/XYZGridDisplay.svelte';
 	import ModelManager from '#lib/components/ModelManager.svelte';
+	import LabWorkbench from '#lib/components/lab/LabWorkbench.svelte';
 
 	import { get } from '#lib/apiClient.js';
 	import type { XYZGridResponse } from '#lib/types.js';
 	import { t2iFormStore } from '#lib/stores/t2iFormStore.js';
 
-	type Tab = 't2i' | 'i2i' | 'grid' | 'chat' | 'models';
+	type Tab = 't2i' | 'i2i' | 'grid' | 'lab' | 'chat' | 'models';
 	const tabs: { id: Tab; label: string }[] = [
 		{ id: 't2i', label: 'Text-to-Image' },
 		{ id: 'i2i', label: 'Image-to-Image' },
 		{ id: 'grid', label: 'XYZ Grid' },
+		{ id: 'lab', label: 'Lab' },
 		{ id: 'chat', label: 'LLM Chat' },
 		{ id: 'models', label: 'Models' }
 	];
@@ -143,6 +145,8 @@
 
 {#if activeTab === 'models'}
 	<ModelManager />
+{:else if activeTab === 'lab'}
+	<LabWorkbench />
 {:else}
 	<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 		<!-- Left: configuration -->

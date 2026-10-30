@@ -122,8 +122,15 @@ def generate_images(
     strength: float | None = None,
     num_outputs: int = 1,
     output_type: str = "pil",
+    probes: list | None = None,
+    call_overrides: dict | None = None,
 ) -> GenerationResult:
-    """Blocking generation. Run via `run_gpu_task`."""
+    """Blocking generation. Run via `run_gpu_task`.
+
+    `probes` (see gradient.ai.lab.probes) are attached for the duration of the call and see
+    every step boundary; `call_overrides` replaces pipeline kwargs (e.g. precomputed
+    prompt embeddings for token ablation).
+    """
     pipe, entry = get_pipeline(
         request.model_id,
         task=task,
@@ -203,12 +210,24 @@ def generate_images(
 
     cfg_active = schedule[0] > 1.0
 
+    from gradient.ai.lab.probes import ModulationController
+
+    all_probes = list(probes or [])
+    if request.modulation:
+        if not callbacks_enabled:
+            raise ValueError(
+                f"{entry.pipeline_class} does not support step callbacks, so modulation is unavailable"
+            )
+        all_probes.insert(0, ModulationController(request.modulation, request))
+
     def on_step_end(pipeline, step: int, timestep, callback_kwargs: dict) -> dict:
         progress_tracker.update(step + 1)
         if scheduled and step + 1 < len(schedule):
             value = schedule[step + 1]
             # The CFG batch layout is fixed at the first step: keep CFG on (>1) or off (<=1).
             pipeline._guidance_scale = max(value, 1.0001) if cfg_active else min(value, 1.0)
+        for probe in all_probes:
+            callback_kwargs = probe.on_step_end(pipeline, step, timestep, callback_kwargs)
         return callback_kwargs
 
     if callbacks_enabled:
@@ -228,7 +247,16 @@ def generate_images(
         if strength is not None and "strength" in call_params:
             kwargs["strength"] = strength
 
+    if call_overrides:
+        kwargs.update(call_overrides)
+        if "prompt_embeds" in call_overrides:
+            kwargs.pop("prompt", None)
+            kwargs.pop("negative_prompt", None)
+
     kwargs = {k: v for k, v in kwargs.items() if k in call_params or k == "callback_on_step_end"}
+    probe_steps = est_steps
+    if task == "image2image" and strength is not None:
+        probe_steps = max(1, int(est_steps * strength))
 
     vae = getattr(pipe, "vae", None)
     if vae is not None and hasattr(vae, "enable_tiling"):
@@ -240,11 +268,23 @@ def generate_images(
             vae.disable_tiling()
 
     progress_tracker.start(task, request.model_id, est_steps)
+    attached: list = []
     try:
         with torch.inference_mode():
+            for probe in all_probes:
+                probe.attach(pipe, entry, probe_steps, kwargs)
+                attached.append(probe)
+            if all_probes:
+                allowed = set(getattr(pipe, "_callback_tensor_inputs", ["latents"]))
+                wanted = {"latents"} | {k for probe in all_probes for k in probe.tensor_inputs}
+                kwargs["callback_on_step_end_tensor_inputs"] = sorted(wanted & allowed)
             output = pipe(**kwargs)
     finally:
+        for probe in reversed(attached):
+            probe.detach()
         progress_tracker.finish()
+    for probe in all_probes:
+        params.update(probe.report())
     images = list(output.images)
     if not images:
         raise RuntimeError("Pipeline returned no images")

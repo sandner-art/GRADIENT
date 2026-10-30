@@ -37,7 +37,7 @@ Handles image generation tasks using diffusion models.
 *   **`POST /generate/text-to-image`**
     *   **Description:** Generates image(s) from a text prompt and parameters.
     *   **Request Body:** `Text2ImageRequest`
-        *   Includes `model_id`, `prompt`, `negative_prompt`, `height`, `width`, `num_inference_steps`, `guidance_scale`, `seed`, `scheduler_id`, `num_outputs`, `custom_sigmas`.
+        *   Includes `model_id`, `prompt`, `negative_prompt`, `height`, `width`, `num_inference_steps`, `guidance_scale`, `seed`, `scheduler_id`, `num_outputs`, `custom_sigmas`, `loras`, and optional `modulation` lanes (see the [user guide](user_guide.md#modulation-lanes)).
     *   **Response (Success - 200):** `Text2ImageResponse`
         *   Contains a list of generated `images` (each with `image_base64`, `seed`, `parameters`), echoed `request_params`, and `performance_ms`.
     *   **Response (Error):** `422` (Validation Error), `500` (Internal Server Error), `507` (Insufficient Memory).
@@ -62,6 +62,17 @@ Handles image generation tasks using diffusion models.
     *   **Description:** Generates image content within a masked region based on an initial image, mask, and prompt.
     *   **Request Body:** (To be defined - likely `InpaintingRequest` with `image_base64`, `mask_image_base64`, prompt, etc.)
     *   **Response:** (To be defined)
+
+### Lab (`/lab`)
+
+Research tools; see the [user guide](user_guide.md#lab) for what they measure. All take a `base_request` (a `Text2ImageRequest`) and return base64 PNG images.
+
+*   **`POST /lab/taylor-preview`**: image plus ∂image/∂(guidance scale). `method`: `auto` (exact JVP on SD 1.x/SDXL, else finite differences), `jvp`, `finite_difference`; optional `delta`. Returns `base_image_base64`, `tangent_png_base64` (value = 128 + 127·t / `tangent_scale`), `tangent_scale`, `magnitude_heatmap_base64`, `mean_abs_tangent`.
+*   **`POST /lab/attention-maps`**: per-word cross-attention maps (SD 1.x/SDXL). Fields `words` (default: every word), `layers` (glob, default `*attn2`), `start`/`end` (fractions of the steps). Returns `image_base64` and `maps` (`word`, `token_positions`, `attention_share`, `heatmap_base64`, `overlay_base64`).
+*   **`POST /lab/token-ablation`**: leave-one-word-out influence. Fields `mode` (`remove_word` or `mask_embedding`), `words` (default: content words), `max_words`, `feature_model` (default DINOv3 ViT-S/16, falling back to DINOv2-small). Returns `results` ranked by `patch_distance`, each with `global_distance`, `heatmap_base64`, `overlay_base64`, `ablated_image_base64`.
+*   **`GET /lab/layers?model_id=...`**: the model's attention layers (`name`, `kind`: self/cross/joint) and suggested glob patterns for `modulation` targets and attention maps. Loads the model.
+
+Errors: `400` for requests the model can't do (e.g. JVP on a DiT model, unknown words, no matching layers), `422` for invalid fields, `507` when out of memory.
 
 ### LLM (`/llm`)
 

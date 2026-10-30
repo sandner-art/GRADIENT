@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { etaSeconds, formatBytes, formatDuration, plainSchedulerName } from './format.js';
+import {
+	apiErrorMessage,
+	etaSeconds,
+	formatBytes,
+	formatDuration,
+	plainSchedulerName
+} from './format.js';
 
 describe('formatBytes', () => {
 	it('formats binary units', () => {
@@ -30,5 +36,21 @@ describe('plainSchedulerName', () => {
 		expect(plainSchedulerName('LCMScheduler')).toBe('LCMScheduler');
 		expect(plainSchedulerName('EulerDiscreteScheduler(timestep_spacing=trailing)')).toBeNull();
 		expect(plainSchedulerName(null)).toBeNull();
+	});
+});
+
+describe('apiErrorMessage', () => {
+	it('formats FastAPI errors', () => {
+		expect(apiErrorMessage({ status: 400, statusText: '', detail: 'bad model' })).toBe(
+			'Error 400: bad model'
+		);
+		expect(
+			apiErrorMessage({
+				status: 422,
+				statusText: '',
+				detail: [{ loc: ['body', 'base_request', 'width'], msg: 'too small' }]
+			})
+		).toBe('Invalid request: base_request.width: too small');
+		expect(apiErrorMessage(new Error('offline'))).toBe('offline');
 	});
 });

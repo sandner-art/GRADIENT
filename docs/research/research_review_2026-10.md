@@ -33,6 +33,15 @@ GRADIENT's thesis still holds, and few tools serve it: a local **lab for diffusi
 | Blocking GPU work on the event loop | **Fixed**: GPU work runs in a worker thread behind a single GPU lock (first step toward the task queue) |
 | Reproducibility metadata (hashes, versions, approximation flag) | **Partly**: pipeline class, family, dtype, memory mode, scheduler and applied flags are logged; hashes and versions remain open |
 
+### Implemented in v0.3.0 (Lab tab, `/api/v1/lab/*`)
+
+| Roadmap item | Status in v0.3.0 |
+|---|---|
+| Exact JVP sensitivity (§5 item 2, step 2) | **Done for SD 1.x/SDXL**: forward-mode AD (`torch.autograd.forward_ad` dual numbers) through the full CFG sampler, UNet and VAE under math-mode SDPA; matches finite differences (cosine > 0.999 in tests). Drives the **Taylor preview** (instant CFG slider, checked against a real render). Other families use finite differences; JVP for flow-matching DiTs is open |
+| σ-timeline structural modulation (M3) | **Done as lanes** on every request: prompt replace/blend, guidance, attention-layer output scale, LoRA weight, each over a step-fraction window, for any family exposing step callbacks. Open: lanes on arbitrary module inputs, per-token/region masks, continuous curves instead of windows |
+| Cross-attention attribution | **Done for UNet models**: recording processor computes explicit softmax probabilities only on selected layers and steps. Open: ConceptAttention for DiT (FLUX, SD3.5) joint attention |
+| Token ablation scored in feature space | **Done, model-agnostic**: leave-one-word-out (word removal, or embedding masking on SD/SDXL) with DINOv3 ViT-S/16 patch/CLS distances, DINOv2-small fallback. Open: batched ablation, region-restricted scores, comparison against attention maps on a prompt set |
+
 ## 2. Code reality check (at `afc072c`)
 
 ### 2.1 `ai/viz/sensitivity.py`: confirmed flawed (worse than suspected)

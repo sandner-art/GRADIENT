@@ -18,7 +18,27 @@ export interface DiffusionTaskBase {
 	seed?: number | null;
 	custom_sigmas?: number[] | null;
 	scheduler_id?: string | null; // Added scheduler
+	loras?: LoRAParameter[] | null;
+	modulation?: ModulationLane[] | null;
 	// vae_id?: string | null; // Add when ready
+}
+
+export interface LoRAParameter {
+	name: string;
+	weight?: number;
+}
+
+/** One lane on the denoising timeline, active for steps in [start, end) (fractions of the run). */
+export type ModulationLaneType = 'guidance' | 'prompt' | 'attention_scale' | 'lora_weight';
+export interface ModulationLane {
+	type: ModulationLaneType;
+	start: number;
+	end: number;
+	value?: number | null;
+	prompt?: string | null;
+	mode?: 'replace' | 'blend';
+	targets?: string | null;
+	lora_index?: number | null;
 }
 
 // --- Text-to-Image Specific --- vvv
@@ -33,7 +53,6 @@ export interface Text2ImageResponse {
 }
 // --- Text-to-Image Specific --- ^^^
 
-
 // --- From presets API models --- vvv
 
 /** Subset of parameters typically saved in a preset. */
@@ -45,9 +64,9 @@ export interface PresetSetting {
 	guidance_scale?: number | null; // Keep as number for now, handle scheduled CFG later if needed
 	scheduler_id?: string | null;
 	strength?: number | null; // For Img2Img presets
-    // vae_id?: string | null; // Add when ready
-    // Allow any other extra fields the backend might store
-    [key: string]: any;
+	// vae_id?: string | null; // Add when ready
+	// Allow any other extra fields the backend might store
+	[key: string]: any;
 }
 
 /** Base structure for creating/reading presets (excluding DB ID etc.) */
@@ -75,7 +94,6 @@ export interface PresetRead extends PresetBase {
 
 // --- From viz/models.py ---
 // Add LatentSpaceVizRequest/Response etc. here later if needed
-
 
 // --- From diffusion/models.py (XYZ Grid) ---
 export interface AxisParameter {
@@ -106,23 +124,24 @@ export interface XYZGridResponse {
 
 // --- From diffusion/models.py (Img2Img) --- vvv
 export interface ImageToImageRequest extends DiffusionTaskBase {
-    image_base64: string;
-    strength?: number;
-    num_outputs?: number;
+	image_base64: string;
+	strength?: number;
+	num_outputs?: number;
 }
 
 export interface ImageToImageResponse {
-    images: ImageResult[];
-    request_params: ImageToImageRequest;
-    performance_ms?: number | null;
+	images: ImageResult[];
+	request_params: ImageToImageRequest;
+	performance_ms?: number | null;
 }
 // --- From diffusion/models.py (Img2Img) --- ^^^
 
-
 // Add other types (LLM, Sensitivity etc.) here as needed
 // --- Model manager (src/gradient/model_manager/schemas.py) --- vvv
-export type ModelType = 'diffusers' | 'checkpoints' | 'vae' | 'lora' | 'controlnet' | 'embeddings' | 'llm';
-export type JobStatus = 'queued' | 'resolving' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+export type ModelType =
+	'diffusers' | 'checkpoints' | 'vae' | 'lora' | 'controlnet' | 'embeddings' | 'llm' | 'vision';
+export type JobStatus =
+	'queued' | 'resolving' | 'downloading' | 'completed' | 'failed' | 'cancelled';
 
 export interface GenerationDefaults {
 	width?: number | null;
@@ -201,3 +220,93 @@ export interface StorageInfo {
 	civitai_token_configured: boolean;
 }
 // --- Model manager --- ^^^
+
+// --- Lab (src/gradient/ai/lab/models.py) --- vvv
+export interface TaylorRequest {
+	base_request: Text2ImageRequest;
+	method?: 'auto' | 'jvp' | 'finite_difference';
+	delta?: number | null;
+}
+
+export interface TaylorResponse {
+	method: 'jvp' | 'finite_difference';
+	guidance_scale: number;
+	seed: number;
+	base_image_base64: string;
+	/** 8-bit RGB: value = 128 + 127 * tangent / tangent_scale (tangent in image units [0,1] per unit CFG) */
+	tangent_png_base64: string;
+	tangent_scale: number;
+	magnitude_heatmap_base64: string;
+	mean_abs_tangent: number;
+	performance_ms: number;
+}
+
+export interface AttentionMapRequest {
+	base_request: Text2ImageRequest;
+	words?: string[] | null;
+	layers?: string;
+	start?: number;
+	end?: number;
+}
+
+export interface WordMap {
+	word: string;
+	token_positions: number[];
+	attention_share: number;
+	heatmap_base64: string;
+	overlay_base64: string;
+}
+
+export interface AttentionMapResponse {
+	image_base64: string;
+	seed: number;
+	maps: WordMap[];
+	layers_recorded: string[];
+	performance_ms: number;
+}
+
+export interface AblationRequest {
+	base_request: Text2ImageRequest;
+	mode?: 'remove_word' | 'mask_embedding';
+	words?: string[] | null;
+	max_words?: number;
+	feature_model?: string | null;
+}
+
+export interface AblationResult {
+	word: string;
+	ablated_prompt?: string | null;
+	global_distance: number;
+	patch_distance: number;
+	heatmap_base64: string;
+	overlay_base64: string;
+	ablated_image_base64: string;
+}
+
+export interface AblationResponse {
+	base_image_base64: string;
+	seed: number;
+	mode: string;
+	feature_model: string;
+	feature_note?: string | null;
+	results: AblationResult[];
+	performance_ms: number;
+}
+
+export interface LayerInfo {
+	name: string;
+	kind: 'self' | 'cross' | 'joint' | string;
+}
+
+export interface LayersResponse {
+	model_id: string;
+	pipeline: string;
+	layers: LayerInfo[];
+	suggestions: string[];
+}
+
+export interface RuntimeStatus {
+	queue_depth: number;
+	current: { task: string; model_id: string; step: number; total_steps: number } | null;
+}
+// --- Lab --- ^^^

@@ -19,7 +19,8 @@
 		lora: 'LoRA',
 		controlnet: 'ControlNet',
 		embeddings: 'Embedding',
-		llm: 'LLM (GGUF)'
+		llm: 'LLM (GGUF)',
+		vision: 'Vision encoder'
 	};
 	const FILTERS: { id: 'all' | ModelType; label: string }[] = [
 		{ id: 'all', label: 'All' },
@@ -27,7 +28,8 @@
 		{ id: 'lora', label: 'LoRA' },
 		{ id: 'vae', label: 'VAE' },
 		{ id: 'controlnet', label: 'ControlNet' },
-		{ id: 'llm', label: 'LLM' }
+		{ id: 'llm', label: 'LLM' },
+		{ id: 'vision', label: 'Vision' }
 	];
 	const DONE = new Set(['completed', 'failed', 'cancelled']);
 	const BIG_DOWNLOAD_GB = 30;

@@ -133,6 +133,8 @@ def infer_type_from_repo_files(repo_id: str, filenames: list[str]) -> ModelType 
     lower_repo = repo_id.lower()
     if "model_index.json" in root:
         return "diffusers"
+    if any(k in lower_repo for k in ("dinov2", "dinov3", "siglip")) and "config.json" in root:
+        return "vision"
     if any(f.lower().endswith(".gguf") for f in filenames):
         return "llm"
     if "adapter_config.json" in names or "lora" in lower_repo:

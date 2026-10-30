@@ -6,7 +6,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-ModelType = Literal["diffusers", "checkpoints", "vae", "lora", "controlnet", "embeddings", "llm"]
+ModelType = Literal[
+    "diffusers", "checkpoints", "vae", "lora", "controlnet", "embeddings", "llm", "vision"
+]
 JobStatus = Literal["queued", "resolving", "downloading", "completed", "failed", "cancelled"]
 
 

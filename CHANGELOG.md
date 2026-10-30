@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 (2026-10-30)
+
+### Lab
+- New **Lab** tab with shared base settings and four tools; also available through the API (`/api/v1/lab/*`).
+- **Taylor preview**: exact derivative of the image with respect to CFG by forward-mode autodiff through the whole sampler (SD 1.x/SDXL), or finite differences for any family. A slider previews nearby CFG values instantly, and *Render exact* reports how much of the real change the prediction captured.
+- **Structural modulation lanes** (`modulation` field on every generation request): switch or blend the prompt, change guidance, scale chosen attention layers, or change a LoRA weight for part of the denoising run. The UI has presets, a lane editor with a timeline, and a baseline comparison with the same seed.
+- **Attention maps**: a recording attention processor computes explicit probabilities only on the selected cross-attention layers and steps (SD 1.x/SDXL); other layers and steps keep the fast kernels.
+- **Token ablation**: leave-one-word-out (word removal for any model, embedding masking for SD 1.x/SDXL) scored by DINOv3 ViT-S/16 patch and CLS distances, falling back to DINOv2-small when DINOv3 isn't available.
+- `GET /api/v1/lab/layers` lists a model's attention layers and suggests patterns.
+- New model type **vision** (folder `vision/`) with DINOv3 ViT-S/16 (gated) and DINOv2-small in the catalog (37 entries).
+
+### Updates and UI
+- `update.sh` / `update.ps1`: update to the newest release tag (or `--main` / `-Main`), then re-run the installer. `--check` / `-Check` only reports. If tracked files have local changes, the scripts list them and stop instead of overwriting them.
+- `config/config.yaml` is no longer tracked, so updates never touch personal settings; start from `config/config.example.yaml`.
+- XYZ grid: the model is picked from a dropdown (with *Use these* recommended settings) like the other tabs, `model_id` can be an axis (cells are rendered grouped by model so each model loads once), and the scheduler is a dropdown.
+- Restored the Tailwind 3 default border color (Tailwind 4 had made unstyled borders black).
+
+### Tests
+- 16 new backend tests: JVP against finite differences, sampler parity with the pipeline, all lane types and their errors, the Lab endpoints, DINOv2/DINOv3 features on tiny random encoders. Frontend unit tests for the Taylor composition, lane rules and layer globs.
+
 ## 0.2.0 (2026-10-30)
 
 ### Install & models

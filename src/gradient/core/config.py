@@ -24,7 +24,16 @@ settings: dict[str, Any] = {}
 logging_config: dict[str, Any] = {}
 
 # Model type -> settings key under paths.models
-MODEL_TYPES = ("diffusers", "checkpoints", "vae", "llm", "lora", "controlnet", "embeddings")
+MODEL_TYPES = (
+    "diffusers",
+    "checkpoints",
+    "vae",
+    "llm",
+    "lora",
+    "controlnet",
+    "embeddings",
+    "vision",
+)
 
 
 def load_yaml_config(file_path: Path) -> dict[str, Any]:

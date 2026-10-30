@@ -13,6 +13,7 @@ from gradient.database.session import init_db
 
 from . import websocket as websocket_endpoints
 from .endpoints import generate as generate_endpoints
+from .endpoints import lab as lab_endpoints
 from .endpoints import llm as llm_endpoints
 from .endpoints import models as models_endpoints
 from .endpoints import presets as presets_endpoints
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 try:
     APP_VERSION = version("gradient-workbench")
 except PackageNotFoundError:  # running from a source checkout without install
-    APP_VERSION = "0.2.0"
+    APP_VERSION = "0.3.0"
 
 FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 
@@ -61,6 +62,7 @@ app.include_router(visualize_endpoints.router, prefix="/api/v1/visualize", tags=
 app.include_router(presets_endpoints.router, prefix="/api/v1", tags=["Presets"])
 app.include_router(system_endpoints.router, prefix="/api/v1", tags=["System Info"])
 app.include_router(models_endpoints.router, prefix="/api/v1", tags=["Models"])
+app.include_router(lab_endpoints.router, prefix="/api/v1", tags=["Lab"])
 app.include_router(websocket_endpoints.router, tags=["WebSocket"])
 
 

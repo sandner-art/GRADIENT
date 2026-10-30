@@ -53,6 +53,8 @@ def _classify(item: Path, model_type: str) -> str | None:
             return "directory"
         if model_type in ("vae", "controlnet") and (item / "config.json").is_file():
             return "diffusers"
+        if model_type == "vision" and (item / "config.json").is_file():
+            return "directory"
     return None
 
 

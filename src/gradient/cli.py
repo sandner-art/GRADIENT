@@ -131,11 +131,7 @@ def cmd_models_catalog(args: argparse.Namespace) -> int:
 def cmd_models_list(args: argparse.Namespace) -> int:
     from gradient.model_manager.inventory import list_local_models
 
-    types = (
-        [args.type]
-        if args.type
-        else ["diffusers", "checkpoints", "vae", "lora", "controlnet", "embeddings", "llm"]
-    )
+    types = [args.type] if args.type else MODEL_TYPES
     total = 0
     for t in types:
         models = list_local_models(t)  # type: ignore[arg-type]
@@ -221,7 +217,16 @@ def cmd_models_delete(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- parser
-MODEL_TYPES = ["diffusers", "checkpoints", "vae", "lora", "controlnet", "embeddings", "llm"]
+MODEL_TYPES = [
+    "diffusers",
+    "checkpoints",
+    "vae",
+    "lora",
+    "controlnet",
+    "embeddings",
+    "llm",
+    "vision",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
