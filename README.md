@@ -75,10 +75,10 @@ Manual install (any platform): install PyTorch for your hardware from [pytorch.o
 ## Quick start
 
 ```bash
-./run.sh                    # Windows: run.bat
+./run.sh                    # Windows PowerShell: .\run.bat   (cmd.exe: run.bat)
 ```
 
-Open **http://127.0.0.1:8000**. With no models installed, GRADIENT opens the **Models** tab: pick something from the catalog (good first choices: *SDXL-Turbo* for 8 GB GPUs, *FLUX.2 [klein] 4B* or *Z-Image-Turbo* for 16 GB+) and press **Download**. When it finishes, select it in *Text-to-Image* and click **Use these** to apply the model's recommended size, steps and guidance.
+The first start can take a minute while PyTorch loads; the browser opens when the server is ready. Otherwise open **http://127.0.0.1:8000**. With no models installed, GRADIENT opens the **Models** tab: pick something from the catalog (good first choices: *SDXL-Turbo* for 8 GB GPUs, *FLUX.2 [klein] 4B* or *Z-Image-Turbo* for 16 GB+) and press **Download**. When it finishes, select it in *Text-to-Image* and click **Use these** to apply the model's recommended size, steps and guidance.
 
 API docs live at http://127.0.0.1:8000/docs.
 

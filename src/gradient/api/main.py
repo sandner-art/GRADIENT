@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from gradient.core.config import PROJECT_ROOT, get_setting
@@ -77,10 +77,21 @@ if get_setting("app.serve_frontend", True) and (FRONTEND_BUILD / "index.html").i
             return FileResponse(candidate)
         return FileResponse(FRONTEND_BUILD / "index.html")  # SPA fallback
 else:
+    _NO_UI_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>GRADIENT</title>
+<style>body{font-family:system-ui,sans-serif;max-width:46rem;margin:3rem auto;padding:0 1rem;line-height:1.5;color:#1f2937}
+code,pre{background:#f3f4f6;border-radius:4px;padding:.1rem .3rem}pre{padding:.8rem}</style></head><body>
+<h1>GRADIENT is running</h1>
+<p>The API works (<a href="/docs">API docs</a>), but the web interface has not been built yet.
+It needs <a href="https://nodejs.org" target="_blank" rel="noreferrer">Node.js</a> 22.17 or newer.</p>
+<ol><li>Install Node.js (LTS), e.g. <code>winget install OpenJS.NodeJS.LTS</code> on Windows.</li>
+<li>Open a <b>new</b> terminal in the GRADIENT folder and run:
+<pre>cd frontend
+npm ci
+npm run build</pre></li>
+<li>Restart GRADIENT and reload this page.</li></ol>
+<p>Models can already be downloaded from the terminal: <code>gradient models catalog</code>.</p>
+</body></html>"""
 
     @app.get("/", include_in_schema=False)
     async def read_root():
-        return {
-            "message": "GRADIENT API is running. API docs: /docs. "
-            "Build the web UI with `cd frontend && npm install && npm run build` to serve it here."
-        }
+        return HTMLResponse(_NO_UI_PAGE)

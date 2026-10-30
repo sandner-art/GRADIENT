@@ -42,9 +42,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
     port = int(args.port or get_setting("app.port", 8000))
     reload = args.reload or bool(get_setting("app.reload", False))
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}"
-    print(f"GRADIENT is starting at {url}  (API docs: {url}/docs)")
-    if args.open or get_setting("app.open_browser", False):
-        threading.Timer(2.0, lambda: webbrowser.open(url)).start()
+    print(f"Starting GRADIENT at {url} ... (the first start can take a minute while PyTorch loads)")
+    open_browser = bool(args.open or get_setting("app.open_browser", False))
+    threading.Thread(target=_announce_when_ready, args=(url, open_browser), daemon=True).start()
     uvicorn.run(
         "gradient.api.main:app",
         host=host,
@@ -54,6 +54,28 @@ def cmd_serve(args: argparse.Namespace) -> int:
         log_config=None,
     )
     return 0
+
+
+def _announce_when_ready(url: str, open_browser: bool, timeout: float = 600) -> None:
+    """Wait until the API answers, then say so (and open the browser if asked)."""
+    import time
+    import urllib.request
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # never proxy localhost
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with opener.open(f"{url}/api/v1/status", timeout=2):
+                break
+        except Exception:
+            time.sleep(1)
+    else:
+        return
+    print(
+        f"\nGRADIENT is ready: {url}  (API docs: {url}/docs). Press Ctrl+C to stop.\n", flush=True
+    )
+    if open_browser:
+        webbrowser.open(url)
 
 
 def cmd_info(_: argparse.Namespace) -> int:

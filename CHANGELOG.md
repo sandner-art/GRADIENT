@@ -6,6 +6,7 @@
 - One-command installers (`install.sh`, `install.ps1`) that detect the GPU and install the matching PyTorch build (CUDA 13.2, legacy CUDA 12.6 for older GPUs/drivers, MPS, CPU); `run.sh` / `run.bat`.
 - New **Model Manager**: verified catalog (`config/model_catalog.yaml`, 35 entries), downloads from Hugging Face repos/files and direct URLs (Civitai) with progress, cancel and resume, gated-model guidance, local inventory with delete. UI tab, REST API (`/api/v1/models/*`) and CLI (`gradient models ...`).
 - `gradient` command (`serve`, `info`, `models`); the API serves the built web UI, so the app runs on one port.
+- `gradient serve --open` opens the browser once the server is ready; without a built UI the start page explains how to build it. `run.bat` keeps its window open on errors (PowerShell: `.\run.bat`).
 
 ### Generation
 - Any diffusers family (SDXL, SD 3.5, FLUX.1/2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2, ...) instead of SD 1.5 only; single-file checkpoints are auto-detected.

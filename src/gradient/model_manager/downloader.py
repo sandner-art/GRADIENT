@@ -17,7 +17,9 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -554,26 +556,33 @@ class DownloadManager:
         if plan.token:
             env["GRADIENT_HF_TOKEN"] = plan.token
 
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "gradient.model_manager.hf_worker",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # A plain subprocess read from worker threads works with every asyncio loop
+        # (asyncio subprocesses are unavailable on Windows' selector loop, e.g. with --reload).
+        proc = await asyncio.to_thread(
+            subprocess.Popen,
+            [sys.executable, "-m", "gradient.model_manager.hf_worker"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         assert proc.stdin and proc.stdout and proc.stderr
-        proc.stdin.write(json.dumps(spec).encode())
-        await proc.stdin.drain()
+        proc.stdin.write(json.dumps(spec))
         proc.stdin.close()
-        stderr_task = asyncio.create_task(proc.stderr.read())
+        stderr_lines: list[str] = []
+        stderr_reader = threading.Thread(
+            target=lambda: stderr_lines.extend(proc.stderr), daemon=True
+        )
+        stderr_reader.start()
 
         speed_state: dict[str, float] = {}
         error: DownloadError | None = None
         done = False
         try:
-            while line := await proc.stdout.readline():
+            while line := await asyncio.to_thread(proc.stdout.readline):
                 try:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
@@ -591,18 +600,18 @@ class DownloadManager:
                     error = DownloadError(
                         msg.get("code", "internal"), msg.get("message", "Download failed")
                     )
-            await proc.wait()
+            await asyncio.to_thread(proc.wait)
         except BaseException:
             # Cancelled (or disk check failed): stop the worker; partial files stay for resume.
-            if proc.returncode is None:
+            if proc.poll() is None:
                 proc.terminate()
                 try:
-                    await asyncio.wait_for(proc.wait(), timeout=10)
-                except TimeoutError:
+                    await asyncio.to_thread(proc.wait, 10)
+                except subprocess.TimeoutExpired:
                     proc.kill()
-            stderr_task.cancel()
             raise
-        stderr_tail = (await stderr_task).decode(errors="replace").strip().splitlines()[-5:]
+        await asyncio.to_thread(stderr_reader.join, 5)
+        stderr_tail = "".join(stderr_lines).strip().splitlines()[-5:]
 
         if error:
             raise error

@@ -104,7 +104,7 @@ if (-not $NoFrontend) {
 & .venv\Scripts\gradient.exe info
 Write-Host ""
 Write-Host "GRADIENT is installed."
-Write-Host "  Start:          run.bat   (or: .venv\Scripts\gradient.exe serve --open)"
+Write-Host "  Start:          .\run.bat   (PowerShell; in cmd.exe just run.bat)"
 Write-Host "  Then open:      http://127.0.0.1:8000  ->  Models tab to download a model"
 Write-Host "  CLI downloads:  .venv\Scripts\gradient.exe models catalog"
 Write-Host "  Gated models:   accept the licence on huggingface.co, then set HF_TOKEN or run .venv\Scripts\hf.exe auth login"
