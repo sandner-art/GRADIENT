@@ -43,6 +43,15 @@ GRADIENT's thesis still holds, and few tools serve it: a local **lab for diffusi
 | ConceptAttention for joint-attention DiTs (§5 item 4) | **Done for FLUX.1, FLUX.2, SD3/3.5** (v0.4.0): concept tokens run through the double-stream blocks via read-only forward hooks (images bit-identical); output-space maps, softmax over concepts, averaged over blocks/steps; segmentation view. A test verifies that the concept stream reproduces the model's own text-stream attention outputs when fed the prompt tokens. Open: single-stream blocks, Qwen-Image/Z-Image/Chroma, real-image mode (encode + noise to σ), segmentation benchmarks |
 | Token ablation scored in feature space | **Done, model-agnostic**: leave-one-word-out (word removal, or embedding masking on SD/SDXL) with DINOv3 ViT-S/16 patch/CLS distances, DINOv2-small fallback. Open: batched ablation, region-restricted scores, comparison against attention maps on a prompt set |
 
+### Implemented in v0.5.0 (queue and gallery)
+
+| Roadmap item | Status |
+|---|---|
+| Task queue (M1) | **Done**: one asyncio worker with persisted jobs, priorities (Lab ahead of batch renders), cancel between sampler steps, reorder, retry, SSE progress; the synchronous endpoints and XYZ grids run through it |
+| Output browsing and annotation | **Done**: gallery with filters, ratings, favourites, notes, tags with a source and confidence (ready for external taggers), bulk edits, per-run view; Lab results saved as runs with `report.json` |
+| Interoperable metadata | **Done**: A1111-style `parameters` chunk next to `grad_parameters`, readable by image managers and taggers. Open: project-folder export/import (XMP sidecars, caption files) for Kurator and ArtAgents |
+| Fast everyday rendering | **Done**: LoRA adapters stay loaded per model (LRU, `max_loaded_loras`), batch count and one job per prompt line. Open: quantized models (GGUF, bitsandbytes, TorchAO) with a paired fidelity report |
+
 ## 2. Code reality check (at `afc072c`)
 
 ### 2.1 `ai/viz/sensitivity.py`: confirmed flawed (worse than suspected)
@@ -104,7 +113,7 @@ GRADIENT's thesis still holds, and few tools serve it: a local **lab for diffusi
 
 ## 5. Feature-by-feature assessment
 
-**(1) Advanced XYZ grids & batching (P0, M).** *Status:* works, synchronous, logs to SQLite. *State of the art:* evaluation now relies on multi-seed statistics with VLM and preference metrics (VQAScore, HPSv3), not eyeballed grids. *Recommendation:* make grids **experiment specs** (declarative YAML/JSON). Add guider type, guidance interval, shift and LoRA block scales as axes. Use common random numbers (the same noise per cell) and N seeds per cell, compute a metric per cell, and run everything through the real task queue.
+**(1) Advanced XYZ grids & batching (P0, M).** *Status:* works, logs to SQLite, and since v0.5.0 runs through the task queue (batch count, one job per prompt line). *State of the art:* evaluation now relies on multi-seed statistics with VLM and preference metrics (VQAScore, HPSv3), not eyeballed grids. *Recommendation:* make grids **experiment specs** (declarative YAML/JSON). Add guider type, guidance interval, shift and LoRA block scales as axes. Use common random numbers (the same noise per cell) and N seeds per cell, compute a metric per cell, and run everything through the real task queue.
 
 **(2) Parameter sensitivity (P0, M).** *Status:* broken (§2.1); v0.2.0 ships step 1 below. *Method:* the quantity of interest is ∂D(x₀(w))/∂w, where D is the VAE decode or a perceptual feature extractor (DINOv3 patches). Build it in three steps:
 1. **Central finite differences** with common random numbers: w ± δ, run as one batched forward pass. This works for any parameter, including LoRA weight and shift, and is the whitepaper's "empirical sampling".
@@ -152,7 +161,7 @@ Present all of these as **modulation lanes on a shared σ-timeline**. That doubl
 
 **Model/adapter support (P0, M).** *v0.2.0:* all diffusers families load; a verified one-click catalog covers SD1.5/SDXL/SD3.5/FLUX.1/FLUX.2/Qwen-Image/Z-Image/Chroma/Sana/Krea 2, LoRAs, VAEs, ControlNets and GGUF LLMs. Remaining: treat SDXL, plus FLUX.2 [klein] 4B and Z-Image-Turbo (6B, 8 steps, under 16 GB) as the flow-matching references for the instrumented sampler, and add quantization presets for Qwen-Image and FLUX.2 [dev].
 
-**Experiment logging / API (P0, S).** Fix seeds, add hashes and versions, and add an `approximate` flag. Make the API asynchronous (submit → job id → WebSocket progress).
+**Experiment logging / API (P0, S).** Fix seeds, add hashes and versions, and add an `approximate` flag. Make the API asynchronous (submit → job id → WebSocket progress); done in v0.5.0 as `POST /queue` with SSE progress.
 
 ---
 
@@ -207,7 +216,7 @@ Ship the instrumentation as Modular Diffusers custom blocks too, so it works ins
 - Build the instrumented sampler with family adapters: SD1.5, SDXL, FLUX.2 [klein] 4B, Z-Image-Turbo.
 - Run guiders standalone; ~~implement the CFG schedule parser, real sigmas~~ (done); add shift and σ-based scheduling.
 - ~~Fix per-image generators~~ (done) and expand metadata (hashes, versions, approximation flag).
-- Build the task queue (one GPU worker, async API, WebSocket progress).
+- ~~Build the task queue (one GPU worker, async API, WebSocket progress).~~ Done in v0.5.0 (server-sent events instead of WebSockets).
 - Add x₀ previews (TAESD/TAEF2) and memory presets (group offload, quantization).
 - *Exit test:* bit-identical re-runs from PNG metadata on every supported family.
 

@@ -32,15 +32,15 @@ Endpoints are grouped by functionality.
 
 ### Generation (`/generate`)
 
-Handles image generation tasks using diffusion models.
+Handles image generation tasks using diffusion models. These endpoints wait for the result, but the work still goes through the render queue (it shows in the Queue panel and can be stopped there; a stopped request returns `409`). To queue work without waiting, use `POST /queue`.
 
 *   **`POST /generate/text-to-image`**
     *   **Description:** Generates image(s) from a text prompt and parameters.
     *   **Request Body:** `Text2ImageRequest`
         *   Includes `model_id`, `prompt`, `negative_prompt`, `height`, `width`, `num_inference_steps`, `guidance_scale`, `seed`, `scheduler_id`, `num_outputs`, `custom_sigmas`, `loras`, and optional `modulation` lanes (see the [user guide](user_guide.md#modulation-lanes)).
     *   **Response (Success - 200):** `Text2ImageResponse`
-        *   Contains a list of generated `images` (each with `image_base64`, `seed`, `parameters`), echoed `request_params`, and `performance_ms`.
-    *   **Response (Error):** `422` (Validation Error), `500` (Internal Server Error), `507` (Insufficient Memory).
+        *   Contains a list of generated `images` (each with `image_base64`, `seed`, `parameters` and `output_id`, the image's id in the gallery), echoed `request_params`, `performance_ms` and `run_uuid`.
+    *   **Response (Error):** `409` (stopped from the queue), `422` (Validation Error), `500` (Internal Server Error), `507` (Insufficient Memory).
 
 *   **`POST /generate/image-to-image`**
     *   **Description:** Generates image variations based on an initial image and a text prompt.
@@ -63,9 +63,29 @@ Handles image generation tasks using diffusion models.
     *   **Request Body:** (To be defined - likely `InpaintingRequest` with `image_base64`, `mask_image_base64`, prompt, etc.)
     *   **Response:** (To be defined)
 
+### Queue (`/queue`)
+
+One worker renders jobs in order; Lab requests run ahead of waiting renders. Jobs (without input images) are kept in the database so the list survives a restart; jobs that were unfinished at shutdown come back as failed and can be retried.
+
+*   **`POST /queue`**: queue jobs and return at once (`202`). Body: `kind` (`text_to_image`, `image_to_image` or `xyz_grid`), `payload` (the request body of the matching `/generate` endpoint), optional `label`, `count` (1–100, default 1) and `vary_seed` (default `true`: with a fixed seed, job *i* uses `seed + i`). Returns `{"jobs": [...]}`.
+*   **`GET /queue`**: `jobs` (running, waiting in order, then recent finished jobs), `running` (id or null) and `waiting` (count). A job has `id`, `kind`, `label`, `status` (`queued`, `running`, `completed`, `failed`, `cancelled`), `position` (when waiting), `progress` (`step`/`total`, and `item`/`items` for grids), `result` (`run_uuid`, `outputs` with gallery ids and seeds, `performance_ms`), `error` and `retryable`.
+*   **`GET /queue/events`**: server-sent events: a `snapshot` on connect, then `job` (a job changed), `removed` and `order` events.
+*   **`GET /queue/{id}`**, **`POST /queue/{id}/cancel`** (removes a waiting job or stops a running one at the next step), **`POST /queue/{id}/move`** (`{"to": "top" | "up" | "down" | "bottom"}`), **`POST /queue/{id}/retry`** (queues a copy of a failed or cancelled job), **`DELETE /queue/finished`**.
+
+### History / gallery (`/history`)
+
+*   **`GET /history/outputs`**: images, newest first. Filters: `run` (run uuid), `model`, `run_type` (e.g. `text_to_image`, `xyz_grid`, `lab_*`), `q` (words in prompt or notes), `min_rating`, `favorite`, `tag`, `since`/`until` (ISO dates); `sort` (`newest`, `oldest`, `rating`), `offset`, `limit` (≤ 200). Returns `items`, `total` and `next_offset`.
+*   **`GET /history/outputs/{id}`**: one image with its full `parameters`, `file_path` and `exists`. **`PATCH`** changes `rating` (1–5, 0 clears), `favorite`, `notes` and `tags` (replaces your own tags; tags from other sources stay). **`DELETE`** moves the file to `<outputs>/.trash/<run>/` and forgets it.
+*   **`POST /history/outputs/bulk`**: `{"ids": [...], "action": "rate" | "favorite" | "add_tags" | "remove_tags" | "delete", "value": ...}`.
+*   **`GET /history/outputs/{id}/image`** (`?download=true` for a download) and **`/thumb?size=256`** (WebP thumbnails, cached in `<outputs>/.thumbs`).
+*   **`GET /history/facets`**: models, run types and tags with counts, plus the totals.
+*   **`GET /history/runs`**: runs with status, model, prompt, image count, cover image ids and error. Finished runs with no images left are hidden unless `include_empty=true`. **`DELETE /history/runs/{uuid}`** moves the run's folder to the trash.
+
+Tags record their `source` (`manual` for tags set in GRADIENT) and an optional `confidence`, ready for tags imported from other tools.
+
 ### Lab (`/lab`)
 
-Research tools; see the [user guide](user_guide.md#lab) for what they measure. All take a `base_request` (a `Text2ImageRequest`) and return base64 PNG images.
+Research tools; see the [user guide](user_guide.md#lab) for what they measure. All take a `base_request` (a `Text2ImageRequest`) and return base64 PNG images. Each result is also saved to the gallery as a run (`run_type` `lab_taylor`, `lab_attention`, `lab_concept_attention` or `lab_token_ablation`; the run folder holds the image, the maps and `report.json`), and responses include `run_uuid`.
 
 *   **`POST /lab/taylor-preview`**: image plus ∂image/∂(guidance scale). `method`: `auto` (exact JVP on SD 1.x/SDXL, else finite differences), `jvp`, `finite_difference`; optional `delta`. Returns `base_image_base64`, `tangent_png_base64` (value = 128 + 127·t / `tangent_scale`), `tangent_scale`, `magnitude_heatmap_base64`, `mean_abs_tangent`.
 *   **`POST /lab/attention-maps`**: per-word cross-attention maps (SD 1.x/SDXL). Fields `words` (default: every word), `layers` (glob, default `*attn2`), `start`/`end` (fractions of the steps). Returns `image_base64` and `maps` (`word`, `token_positions`, `attention_share`, `heatmap_base64`, `overlay_base64`).

@@ -8,15 +8,19 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from gradient.api.job_kinds import load_recent_jobs, persist_job, register_job_kinds
 from gradient.core.config import PROJECT_ROOT, get_setting
-from gradient.database.session import init_db
+from gradient.core.jobs import job_queue
+from gradient.database.session import dispose_engine, init_db
 
 from . import websocket as websocket_endpoints
 from .endpoints import generate as generate_endpoints
+from .endpoints import history as history_endpoints
 from .endpoints import lab as lab_endpoints
 from .endpoints import llm as llm_endpoints
 from .endpoints import models as models_endpoints
 from .endpoints import presets as presets_endpoints
+from .endpoints import queue as queue_endpoints
 from .endpoints import status as status_endpoints
 from .endpoints import system as system_endpoints
 from .endpoints import visualize as visualize_endpoints
@@ -26,7 +30,7 @@ logger = logging.getLogger(__name__)
 try:
     APP_VERSION = version("gradient-workbench")
 except PackageNotFoundError:  # running from a source checkout without install
-    APP_VERSION = "0.4.0"
+    APP_VERSION = "0.5.0"
 
 FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 
@@ -35,6 +39,13 @@ FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 async def lifespan(app: FastAPI):
     logger.info("GRADIENT API %s starting up", APP_VERSION)
     await init_db()
+    register_job_kinds()
+    job_queue.set_persistence(persist_job)
+    try:
+        job_queue.restore(await load_recent_jobs())
+    except Exception as e:
+        logger.warning("Could not load recent queue jobs: %s", e)
+    await job_queue.start()
     if (FRONTEND_BUILD / "index.html").is_file():
         logger.info("Serving web UI from %s", FRONTEND_BUILD)
     else:
@@ -43,9 +54,11 @@ async def lifespan(app: FastAPI):
         )
     yield
     logger.info("GRADIENT API shutting down")
+    await job_queue.stop()
     from gradient.model_manager.downloader import download_manager
 
     await download_manager.shutdown()
+    await dispose_engine()
 
 
 app = FastAPI(
@@ -63,6 +76,8 @@ app.include_router(presets_endpoints.router, prefix="/api/v1", tags=["Presets"])
 app.include_router(system_endpoints.router, prefix="/api/v1", tags=["System Info"])
 app.include_router(models_endpoints.router, prefix="/api/v1", tags=["Models"])
 app.include_router(lab_endpoints.router, prefix="/api/v1", tags=["Lab"])
+app.include_router(queue_endpoints.router, prefix="/api/v1", tags=["Queue"])
+app.include_router(history_endpoints.router, prefix="/api/v1", tags=["Gallery"])
 app.include_router(websocket_endpoints.router, tags=["WebSocket"])
 
 

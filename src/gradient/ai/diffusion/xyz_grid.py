@@ -6,9 +6,9 @@ import logging
 import time
 import uuid  # Import uuid
 
-from gradient.database.models import ExperimentRun  # Import model
-
 # DB Imports
+from gradient.core.jobs import JobCancelled, report_progress
+from gradient.database.models import ExperimentRun  # Import model
 from gradient.database.session import get_db_session, update_run_status  # Import updater
 
 from .models import Text2ImageRequest, XYZGridRequest, XYZGridResult
@@ -17,10 +17,10 @@ from .pipelines import resolve_seed, run_text_to_image
 logger = logging.getLogger(__name__)
 
 
-async def run_xyz_grid(request: XYZGridRequest) -> list[XYZGridResult]:
+async def run_xyz_grid(request: XYZGridRequest, run_uuid: str | None = None) -> list[XYZGridResult]:
     """Generates images based on XYZ grid parameter variations, logging as one ExperimentRun."""
     start_time = time.time()
-    run_uuid = str(uuid.uuid4())  # Unique ID for the entire grid run
+    run_uuid = run_uuid or str(uuid.uuid4())  # Unique ID for the entire grid run
     results: list[XYZGridResult] = []
     base_params_dict = request.base_parameters.model_dump(exclude_unset=True)
     grid_status = "completed"  # Assume success initially
@@ -128,7 +128,56 @@ async def run_xyz_grid(request: XYZGridRequest) -> list[XYZGridResult]:
         order.sort(key=lambda idx: str(value_combinations[idx][model_pos]))
     cell_results: dict[int, XYZGridResult] = {}
 
-    for i in order:
+    try:
+        await _render_cells(
+            order,
+            value_combinations,
+            axis_params,
+            active_axes,
+            request,
+            base_params_dict,
+            run_uuid,
+            db_run,
+            total_images,
+            cell_results,
+            grid_error_details,
+        )
+    except JobCancelled:
+        if db_run:
+            await update_run_status(db_run.id, "cancelled", end_time=time.time())
+        raise
+    if grid_error_details:
+        grid_status = "failed"
+
+    results.extend(cell_results[i] for i in range(len(value_combinations)))
+
+    # --- Update Final Grid Status ---
+    end_time = time.time()
+    final_error_str = "; ".join(grid_error_details) if grid_error_details else None
+    if db_run:
+        await update_run_status(db_run.id, grid_status, error=final_error_str, end_time=end_time)
+
+    logger.info(
+        f"XYZ grid {run_uuid} generation completed. Processed {len(results)} cells. Status: {grid_status}"
+    )
+    return results
+
+
+async def _render_cells(
+    order,
+    value_combinations,
+    axis_params,
+    active_axes,
+    request,
+    base_params_dict,
+    run_uuid,
+    db_run,
+    total_images,
+    cell_results,
+    grid_error_details,
+) -> None:
+    for done, i in enumerate(order):
+        report_progress(item=done + 1, items=total_images)
         combo = value_combinations[i]
         params_for_run = base_params_dict.copy()
         current_axis_values = {}
@@ -175,7 +224,6 @@ async def run_xyz_grid(request: XYZGridRequest) -> list[XYZGridResult]:
                 logger.error(
                     f"Image {i + 1}/{total_images} failed for grid {run_uuid}: {error_msg}"
                 )
-                grid_status = "failed"  # Mark overall grid as failed
                 grid_error_details.append(f"Cell {i + 1}: {error_msg}")
 
         except Exception as e:
@@ -185,20 +233,6 @@ async def run_xyz_grid(request: XYZGridRequest) -> list[XYZGridResult]:
                 exc_info=True,
             )
             grid_cell_result.error = error_msg
-            grid_status = "failed"
             grid_error_details.append(f"Cell {i + 1}: {error_msg}")
 
         cell_results[i] = grid_cell_result
-
-    results.extend(cell_results[i] for i in range(len(value_combinations)))
-
-    # --- Update Final Grid Status ---
-    end_time = time.time()
-    final_error_str = "; ".join(grid_error_details) if grid_error_details else None
-    if db_run:
-        await update_run_status(db_run.id, grid_status, error=final_error_str, end_time=end_time)
-
-    logger.info(
-        f"XYZ grid {run_uuid} generation completed. Processed {len(results)} cells. Status: {grid_status}"
-    )
-    return results

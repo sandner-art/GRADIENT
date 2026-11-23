@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -74,13 +75,59 @@ class GeneratedOutput(Base):
     output_metadata = Column(JSON, nullable=True, name="metadata")
     creation_time = Column(DateTime, default=_utcnow, nullable=False)
     user_rating = Column(Integer, nullable=True)  # Optional rating (e.g., 1-5)
-    user_tags = Column(String, nullable=True)  # Optional comma-separated tags
+    user_tags = Column(String, nullable=True)  # legacy comma-separated tags (see OutputTag)
+    # Gallery fields (v0.5); copied out of `parameters` so they can be filtered and sorted
+    favorite = Column(Boolean, default=False, nullable=False, server_default="0")
+    notes = Column(Text, nullable=True)
+    model_id = Column(String, nullable=True, index=True)
+    prompt = Column(Text, nullable=True)
+    seed = Column(Integer, nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
 
     # Relationship back to the run
     run = relationship("ExperimentRun", back_populates="outputs")
+    tags = relationship("OutputTag", back_populates="output", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<GeneratedOutput(id={self.id}, run_id={self.run_id}, type='{self.output_type}', path='{self.file_path}')>"
+
+
+class OutputTag(Base):
+    """A tag on an output, with where it came from (you, Kurator, ArtAgents, an AI tagger)."""
+
+    __tablename__ = "output_tags"
+
+    id = Column(Integer, primary_key=True)
+    output_id = Column(
+        Integer, ForeignKey("generated_outputs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tag = Column(String, nullable=False, index=True)
+    source = Column(String, nullable=False, default="manual")  # manual | kurator | artagents | ai
+    confidence = Column(Float, nullable=True)
+    added = Column(DateTime, default=_utcnow, nullable=False)
+
+    output = relationship("GeneratedOutput", back_populates="tags")
+    __table_args__ = (UniqueConstraint("output_id", "tag", "source", name="_output_tag_uc"),)
+
+
+class QueueJob(Base):
+    """A job of the render queue (kept for the queue panel's history and retries)."""
+
+    __tablename__ = "queue_jobs"
+
+    id = Column(String, primary_key=True)
+    kind = Column(String, nullable=False, index=True)
+    label = Column(String, nullable=False, default="")
+    status = Column(String, nullable=False, index=True)
+    priority = Column(Integer, nullable=False, default=0)
+    payload = Column(JSON, nullable=True)  # without inline images
+    created = Column(Float, nullable=False)
+    started = Column(Float, nullable=True)
+    finished = Column(Float, nullable=True)
+    run_uuid = Column(String, nullable=True, index=True)
+    error = Column(Text, nullable=True)
+    result = Column(JSON, nullable=True)  # summary: run_uuid, output ids, timings
 
 
 class ModelPreset(Base):

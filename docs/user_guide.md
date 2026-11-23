@@ -2,6 +2,29 @@
 
 Installation and model downloads are covered in the [README](../README.md). This guide covers using the workbench.
 
+## Rendering, the queue and the gallery
+
+**Queueing.** *Text-to-Image* and *Image-to-Image* don't wait for the render: **Queue** (or Ctrl+Enter in the prompt) adds jobs and you can change settings and queue more straight away. *Batch count* queues the same settings several times (with a fixed seed, each job uses the next seed; with an empty seed each gets a random one). Tick *One job per line* to render a list of prompts, one job per line. *Images per job* makes several images in one pass, which is faster on a big GPU but needs more memory.
+
+**The Queue panel** (header button; the dot is green while connected, a spinner and a thin bar show the running job) lists the running job with **Stop**, the waiting jobs (⤒ run next, ▲/▼ move, ✕ remove) and finished jobs (**Gallery** opens their images, **Retry** for failed or stopped ones). Lab tools and XYZ grids also go through the queue, and Lab requests run before waiting renders. Finished renders show as tiles under the form; when you're on another tab, a notice with **View** pops up.
+
+**Gallery.** Every image GRADIENT saves is here: renders, grid cells and Lab results. Search prompts and notes, filter by model, type, rating, tag or favourites, sort by date or rating, and change the tile size. Hover a tile to favourite or rate it. Click a tile to open the viewer; with the checkbox, Ctrl+click or Shift+click you select several, then rate, favourite, tag, view or delete them together. *Runs* lists the renders, grids and Lab runs with their status; *Open* shows a run's images.
+
+**Viewer keys:** ←/→ previous/next, 1–5 rate (0 clears), F favourite, I details, Delete twice to delete, Esc close. From the viewer:
+- **Use settings** puts the image's model, prompt, size, steps, guidance, sampler, LoRAs and seed into *Text-to-Image* (**…with new seed** leaves the seed empty).
+- **Use as input** loads the image into *Image-to-Image* with its settings.
+- **Open in Lab** copies the settings into the Lab.
+
+Deleted images go to `<outputs>/.trash/<run>/`, not straight to the recycle bin; empty that folder when you're sure.
+
+**Metadata.** Each PNG carries the full settings as JSON (`grad_parameters`) and an A1111-style `parameters` text (prompt, negative prompt, steps, sampler, CFG, seed, size, model, LoRAs). Image managers, taggers and other UIs that read A1111 metadata can show and search them.
+
+### Fast rendering with LoRAs
+
+LoRAs stay loaded on the model, so changing a weight, switching between LoRAs you've used, or rendering without any (*✕* removes them) needs no reloading. Up to `performance.max_loaded_loras` (default 6) LoRAs are kept per model; the least recently used one is unloaded when you go over. A LoRA must match the model family (an SD 1.5 LoRA won't apply to SDXL): a LoRA that matches no layers of the model is skipped with a warning in the log, and a file that can't be loaded at all stops the job with an error.
+
+For quick everyday work on modest GPUs, SD 1.5 at 512×512 with 20–25 steps, or SDXL-Turbo / LCM-LoRA models at 1–8 steps, render in seconds. The XYZ grid's `loras` axis compares LoRAs or weights side by side with the same seed.
+
 ## Picking settings for a model
 
 Modern models need very different settings. When you select a model that came from the catalog, a blue bar offers **Use these** (recommended size, steps, guidance). Rough guide:
@@ -72,7 +95,7 @@ Notes:
 - The image metadata records which lane types were applied (`modulation_applied`) and how many layers each pattern matched (`modulation_layers`).
 
 ### Reproducibility
-Every image is saved under `experiments/<run id>/` with its full parameters in the PNG text chunk `grad_parameters` (including the resolved seed, scheduler, pipeline class, dtype and memory mode), and logged to `data/database/gradient_data.db`. Image *i* of a batch uses seed `seed + i` and regenerates identically on its own.
+Every image is saved under `experiments/<run id>/` with its full parameters in the PNG text chunk `grad_parameters` (including the resolved seed, scheduler, pipeline class, dtype and memory mode), and logged to `data/database/gradient_data.db`. Databases from earlier versions are upgraded automatically on start (new columns are added and filled from the stored parameters). Image *i* of a batch uses seed `seed + i` and regenerates identically on its own.
 
 ## Lab
 

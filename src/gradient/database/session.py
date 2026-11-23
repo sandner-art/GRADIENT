@@ -39,6 +39,25 @@ except Exception as e:
     logger.critical(f"Failed to create async database engine: {e}", exc_info=True)
     async_engine = None
 
+if async_engine is not None:
+    from sqlalchemy import event
+
+    @event.listens_for(async_engine.sync_engine, "connect")
+    def _sqlite_pragmas(dbapi_connection, _record):
+        # WAL: the gallery can read while the render queue writes; wait instead of failing
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=15000")
+        cursor.close()
+
+
+async def dispose_engine() -> None:
+    """Close pooled connections (at shutdown; also keeps tests' event loops apart)."""
+    if async_engine is not None:
+        await async_engine.dispose()
+
+
 # --- Async Session Factory ---
 AsyncSessionFactory = (
     async_sessionmaker(
@@ -61,9 +80,82 @@ async def init_db():
     async with async_engine.begin() as conn:
         try:
             await conn.run_sync(Base.metadata.create_all)
+            added = await conn.run_sync(_add_missing_columns)
+            if added:
+                logger.info("Database upgraded: added columns %s", ", ".join(added))
+            await conn.run_sync(_backfill_outputs)
             logger.info("Database tables created successfully (if they didn't exist).")
         except Exception as e:
             logger.error(f"Error creating database tables: {e}", exc_info=True)
+
+
+def _add_missing_columns(sync_conn) -> list[str]:
+    """create_all() never alters existing tables: add columns that newer versions define."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(sync_conn)
+    added: list[str] = []
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" '
+            ddl += col.type.compile(dialect=sync_conn.dialect)
+            if col.server_default is not None:
+                ddl += f" NOT NULL DEFAULT {col.server_default.arg}"
+            sync_conn.execute(text(ddl))
+            if col.index:
+                sync_conn.execute(
+                    text(
+                        f'CREATE INDEX IF NOT EXISTS "ix_{table.name}_{col.name}" '
+                        f'ON "{table.name}" ("{col.name}")'
+                    )
+                )
+            added.append(f"{table.name}.{col.name}")
+    return added
+
+
+def _backfill_outputs(sync_conn) -> None:
+    """Fill the gallery columns of outputs logged before v0.5 and move legacy comma tags."""
+    import json
+
+    from sqlalchemy import text
+
+    from gradient.gallery.metadata import output_fields
+
+    rows = sync_conn.execute(
+        text(
+            "SELECT id, parameters, user_tags FROM generated_outputs "
+            "WHERE model_id IS NULL AND parameters IS NOT NULL"
+        )
+    ).fetchall()
+    for out_id, params, user_tags in rows:
+        try:
+            p = json.loads(params) if isinstance(params, str) else (params or {})
+        except ValueError:
+            p = {}
+        fields = output_fields(p)
+        fields["model_id"] = fields["model_id"] or ""
+        sync_conn.execute(
+            text(
+                "UPDATE generated_outputs SET model_id=:model_id, prompt=:prompt, seed=:seed, "
+                "width=:width, height=:height WHERE id=:id"
+            ),
+            {**fields, "id": out_id},
+        )
+        for tag in {t.strip() for t in (user_tags or "").split(",") if t.strip()}:
+            sync_conn.execute(
+                text(
+                    "INSERT OR IGNORE INTO output_tags (output_id, tag, source, added) "
+                    "VALUES (:id, :tag, 'manual', CURRENT_TIMESTAMP)"
+                ),
+                {"id": out_id, "tag": tag},
+            )
+    if rows:
+        logger.info("Backfilled gallery fields for %d earlier outputs", len(rows))
 
 
 @asynccontextmanager
@@ -79,6 +171,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         logger.debug("DB Session committed.")
     except Exception as e:
         logger.error(f"Error during DB session: {e}. Rolling back.", exc_info=True)
+        await session.rollback()
+        raise
+    except BaseException:
+        # cancelled (e.g. at shutdown): roll back so no write lock is left behind
         await session.rollback()
         raise
     finally:

@@ -53,6 +53,8 @@ performance:
   memory_mode: "auto"
   # How many base pipelines to keep loaded at once (LRU eviction beyond this).
   max_cached_pipelines: 1
+  # LoRAs kept loaded per model; switching between them or changing weights is then instant.
+  max_loaded_loras: 6
   # Decode with VAE tiling when width*height exceeds this many pixels.
   vae_tiling_min_pixels: 1572864   # ~1536x1024
   # Optional diffusers attention backend, e.g. "flash", "sage", "_native_cudnn".

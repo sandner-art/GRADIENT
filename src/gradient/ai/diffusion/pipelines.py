@@ -16,7 +16,6 @@ image i reproduces that image alone.
 import base64
 import datetime
 import inspect
-import json
 import logging
 import time
 import uuid
@@ -26,13 +25,14 @@ from typing import Any
 
 import torch
 from PIL import Image
-from PIL.PngImagePlugin import PngInfo
 
 from gradient.core.config import get_outputs_dir, get_setting
 from gradient.core.device import get_device
+from gradient.core.jobs import JobCancelled, check_cancelled
 from gradient.core.scheduling import progress_tracker, run_gpu_task
 from gradient.database.models import ExperimentRun, GeneratedOutput
 from gradient.database.session import get_db_session, update_run_status
+from gradient.gallery.metadata import output_fields, png_info
 
 from .guidance import is_constant, parse_guidance_schedule
 from .loading import DYNAMIC_CFG_FAMILIES, LoadedPipeline, get_pipeline
@@ -221,6 +221,7 @@ def generate_images(
         all_probes.insert(0, ModulationController(request.modulation, request))
 
     def on_step_end(pipeline, step: int, timestep, callback_kwargs: dict) -> dict:
+        check_cancelled()
         progress_tracker.update(step + 1)
         if scheduled and step + 1 < len(schedule):
             value = schedule[step + 1]
@@ -278,7 +279,17 @@ def generate_images(
                 allowed = set(getattr(pipe, "_callback_tensor_inputs", ["latents"]))
                 wanted = {"latents"} | {k for probe in all_probes for k in probe.tensor_inputs}
                 kwargs["callback_on_step_end_tensor_inputs"] = sorted(wanted & allowed)
+            check_cancelled()
             output = pipe(**kwargs)
+    except BaseException:
+        # an interrupted call skips the pipeline's own offload hooks; free VRAM now
+        free = getattr(pipe, "maybe_free_model_hooks", None)
+        if callable(free):
+            try:
+                free()
+            except Exception:
+                pass
+        raise
     finally:
         for probe in reversed(attached):
             probe.detach()
@@ -318,12 +329,35 @@ def _save_outputs(
     saved = []
     for img, seed in zip(result.images, result.seeds, strict=False):
         params = {**result.params, "seed": seed}
-        info = PngInfo()
-        info.add_text("grad_parameters", json.dumps(params, default=str))
         path = out_dir / f"{prefix}_{uuid.uuid4().hex[:8]}_seed{seed}.png"
-        img.save(path, "PNG", pnginfo=info)
+        img.save(path, "PNG", pnginfo=png_info(params))
         saved.append((str(path.resolve()), params, img))
     return saved
+
+
+async def _log_outputs(
+    db_run_id: int, saved: list[tuple[str, dict, Image.Image]], output_type: str = "image"
+) -> list[int | None]:
+    """Add saved files to the gallery; returns their ids (None where logging failed)."""
+    try:
+        async with get_db_session() as db:
+            rows = [
+                GeneratedOutput(
+                    run_id=db_run_id,
+                    output_type=output_type,
+                    file_path=path,
+                    parameters=params,
+                    creation_time=datetime.datetime.now(tz=datetime.UTC),
+                    **{**output_fields(params), "width": img.width, "height": img.height},
+                )
+                for path, params, img in saved
+            ]
+            db.add_all(rows)
+            await db.flush()
+            return [r.id for r in rows]
+    except Exception as e:
+        logger.error("Run %s: could not log outputs: %s", db_run_id, e)
+        return [None] * len(saved)
 
 
 async def _run(
@@ -331,7 +365,7 @@ async def _run(
     request: Text2ImageRequest | ImageToImageRequest,
     parent_run_uuid: str | None,
     parent_run_id: int | None,
-) -> tuple[list[ImageResult], float]:
+) -> tuple[list[ImageResult], float, str]:
     start = time.time()
     run_uuid = parent_run_uuid or str(uuid.uuid4())
     db_run_id = parent_run_id
@@ -351,6 +385,10 @@ async def _run(
             getattr(request, "strength", None),
             request.num_outputs,
         )
+    except JobCancelled:
+        if db_run_id and parent_run_uuid is None:
+            await update_run_status(db_run_id, "cancelled", end_time=time.time())
+        raise
     except Exception as e:
         if db_run_id and parent_run_uuid is None:
             await update_run_status(
@@ -360,39 +398,34 @@ async def _run(
 
     prefix = "t2i" if task == "text2image" else "i2i"
     saved = _save_outputs(result, run_uuid, prefix)
-    images = [
-        ImageResult(image_base64=_encode_png(img), seed=p["seed"], parameters=p)
-        for _, p, img in saved
-    ]
-
+    ids: list[int | None] = [None] * len(saved)
     if db_run_id:
-        try:
-            async with get_db_session() as db:
-                db.add_all(
-                    GeneratedOutput(
-                        run_id=db_run_id,
-                        output_type="image",
-                        file_path=path,
-                        parameters=params,
-                        creation_time=datetime.datetime.now(tz=datetime.UTC),
-                    )
-                    for path, params, _ in saved
-                )
-        except Exception as e:
-            logger.error("Run %s: could not log outputs: %s", run_uuid, e)
+        ids = await _log_outputs(db_run_id, saved)
         if parent_run_uuid is None:
             await update_run_status(db_run_id, "completed", end_time=time.time())
+    images = [
+        ImageResult(
+            image_base64=_encode_png(img),
+            seed=p["seed"],
+            parameters=p,
+            output_id=out_id,
+            run_uuid=run_uuid,
+        )
+        for (_, p, img), out_id in zip(saved, ids, strict=True)
+    ]
 
     elapsed_ms = (time.time() - start) * 1000
     logger.info("Run %s (%s): %d image(s) in %.0f ms", run_uuid, run_type, len(images), elapsed_ms)
-    return images, elapsed_ms
+    return images, elapsed_ms, run_uuid
 
 
 async def run_text_to_image(
     request: Text2ImageRequest, parent_run_uuid: str | None = None, parent_run_id: int | None = None
 ) -> Text2ImageResponse:
-    images, ms = await _run("text_to_image", request, parent_run_uuid, parent_run_id)
-    return Text2ImageResponse(images=images, request_params=request, performance_ms=ms)
+    images, ms, run_uuid = await _run("text_to_image", request, parent_run_uuid, parent_run_id)
+    return Text2ImageResponse(
+        images=images, request_params=request, performance_ms=ms, run_uuid=run_uuid
+    )
 
 
 async def run_image_to_image(
@@ -400,5 +433,7 @@ async def run_image_to_image(
     parent_run_uuid: str | None = None,
     parent_run_id: int | None = None,
 ) -> ImageToImageResponse:
-    images, ms = await _run("image_to_image", request, parent_run_uuid, parent_run_id)
-    return ImageToImageResponse(images=images, request_params=request, performance_ms=ms)
+    images, ms, run_uuid = await _run("image_to_image", request, parent_run_uuid, parent_run_id)
+    return ImageToImageResponse(
+        images=images, request_params=request, performance_ms=ms, run_uuid=run_uuid
+    )

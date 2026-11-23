@@ -16,6 +16,7 @@ import torch
 
 from gradient.ai.diffusion.guidance import parse_guidance_schedule
 from gradient.ai.diffusion.models import DiffusionTaskBase
+from gradient.core.jobs import check_cancelled, report_progress
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,9 @@ def sample(
     cond = encode(pipe, request.prompt, request.negative_prompt, request.height, request.width, cfg)
     latents = initial_noise(pipe, request, seed) * sched.init_noise_sigma
     unet = pipe.unet
+    report_progress(step=0, total=len(timesteps))
     for i, t in enumerate(timesteps):
+        check_cancelled()
         x = torch.cat([latents] * 2) if cond.cfg else latents
         x = sched.scale_model_input(x, t)
         noise = unet(
@@ -115,6 +118,7 @@ def sample(
             uncond, text = noise.chunk(2)
             noise = uncond + (schedule[i] + guidance_offset) * (text - uncond)
         latents = sched.step(noise, t, latents, return_dict=False)[0]
+        report_progress(step=i + 1)
     return latents
 
 

@@ -19,6 +19,8 @@ export interface DiffusionTaskBase {
 	custom_sigmas?: number[] | null;
 	scheduler_id?: string | null; // Added scheduler
 	loras?: LoRAParameter[] | null;
+	embeddings?: string[] | null;
+	vae_id?: string | null;
 	modulation?: ModulationLane[] | null;
 	// vae_id?: string | null; // Add when ready
 }
@@ -341,3 +343,120 @@ export interface RuntimeStatus {
 	current: { task: string; model_id: string; step: number; total_steps: number } | null;
 }
 // --- Lab --- ^^^
+
+// --- Queue (src/gradient/core/jobs.py) --- vvv
+export type QueueJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type JobKind =
+	| 'text_to_image'
+	| 'image_to_image'
+	| 'xyz_grid'
+	| 'lab_taylor'
+	| 'lab_attention'
+	| 'lab_concept_attention'
+	| 'lab_token_ablation';
+
+export interface JobOutputRef {
+	id: number | null;
+	seed?: number;
+}
+
+export interface QueueJob {
+	id: string;
+	kind: JobKind | string;
+	label: string;
+	status: QueueJobStatus;
+	priority: number;
+	created: number;
+	started: number | null;
+	finished: number | null;
+	/** step/total for the current render; item/items for grids */
+	progress: { step?: number; total?: number; item?: number; items?: number; phase?: string };
+	run_uuid: string | null;
+	error: string | null;
+	result: { run_uuid?: string; outputs?: JobOutputRef[]; performance_ms?: number } | null;
+	position: number | null;
+	retryable: boolean;
+	model_id: string | null;
+}
+
+export type QueueEvent =
+	| { type: 'snapshot'; jobs: QueueJob[] }
+	| { type: 'job'; job: QueueJob }
+	| { type: 'removed'; ids: string[] }
+	| { type: 'order'; order: string[] };
+// --- Queue --- ^^^
+
+// --- Gallery (src/gradient/gallery/store.py) --- vvv
+export interface GalleryTag {
+	tag: string;
+	source: 'manual' | 'kurator' | 'artagents' | 'ai' | string;
+	confidence: number | null;
+}
+
+export interface GalleryItem {
+	id: number;
+	run_uuid: string | null;
+	run_type: string | null;
+	output_type: string;
+	created: string | null;
+	model_id: string | null;
+	prompt: string | null;
+	seed: number | null;
+	width: number | null;
+	height: number | null;
+	rating: number | null;
+	favorite: boolean;
+	notes: string | null;
+	tags: GalleryTag[];
+	file_name: string;
+	image_url: string;
+	thumb_url: string;
+}
+
+export interface GalleryDetail extends GalleryItem {
+	parameters: Record<string, unknown>;
+	negative_prompt: string | null;
+	file_path: string;
+	exists: boolean;
+	run_status: string | null;
+}
+
+export interface GalleryPage {
+	items: GalleryItem[];
+	total: number;
+	offset: number;
+	next_offset: number | null;
+}
+
+export interface RunItem {
+	run_uuid: string;
+	run_type: string;
+	status: string;
+	started: string | null;
+	finished: string | null;
+	model_id: string | null;
+	prompt: string | null;
+	count: number;
+	cover_ids: number[];
+	error: string | null;
+}
+
+export interface GalleryFacets {
+	models: { model_id: string; count: number }[];
+	run_types: { run_type: string; count: number }[];
+	tags: { tag: string; count: number }[];
+	total: number;
+	favorites: number;
+}
+
+export interface GalleryFilter {
+	run?: string | null;
+	model?: string | null;
+	run_type?: string | null;
+	q?: string;
+	min_rating?: number | null;
+	favorite?: boolean | null;
+	tag?: string | null;
+	sort?: 'newest' | 'oldest' | 'rating';
+}
+// --- Gallery --- ^^^

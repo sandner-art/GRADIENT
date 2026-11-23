@@ -195,11 +195,13 @@ class ModulationController(Probe):
         if any(lane.type == "lora_weight" for lane in self.lanes):
             loras = self.request.loras or []
             active = list(getattr(pipe, "get_active_adapters", lambda: [])())
-            self.lora_names = [f"g_adapter_{i}" for i in range(len(loras))]
+            self.lora_names = list(getattr(entry, "active_adapters", []))
             self.lora_base = [float(lora.weight) for lora in loras]
             for lane in self.lanes:
                 if lane.type == "lora_weight" and (
-                    lane.lora_index >= len(loras) or self.lora_names[lane.lora_index] not in active
+                    lane.lora_index >= len(loras)
+                    or len(self.lora_names) != len(loras)
+                    or self.lora_names[lane.lora_index] not in active
                 ):
                     raise ValueError(
                         f"lora_weight lane refers to LoRA #{lane.lora_index}, which is not loaded"

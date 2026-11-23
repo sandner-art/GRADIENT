@@ -156,7 +156,8 @@ class ImageResult(BaseModel):
     parameters: dict[str, Any] = Field(
         default_factory=dict, description="Parameters used for this specific image"
     )
-    # Add other metadata later (safety status, timings, etc.)
+    output_id: int | None = Field(default=None, description="Gallery id of the saved image")
+    run_uuid: str | None = Field(default=None, description="Run this image belongs to")
 
 
 # --- Text-to-Image Models ---
@@ -174,6 +175,7 @@ class Text2ImageResponse(BaseModel):
     images: list[ImageResult]
     request_params: Text2ImageRequest  # Echo original request
     performance_ms: float | None = None
+    run_uuid: str | None = None
 
 
 # --- Image-to-Image Models ---
@@ -198,6 +200,7 @@ class ImageToImageResponse(BaseModel):
     images: list[ImageResult]
     request_params: ImageToImageRequest  # Echo original request
     performance_ms: float | None = None
+    run_uuid: str | None = None
 
 
 # --- XYZ Grid Specific Models ---
@@ -258,3 +261,4 @@ class XYZGridResponse(BaseModel):
 
     grid_results: list[XYZGridResult]
     request_params: XYZGridRequest  # Echo back request
+    run_uuid: str | None = None

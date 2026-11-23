@@ -377,3 +377,29 @@ def build_tiny_flux2_klein(path: Path, seed: int = 0) -> Path:
         is_distilled=True,
     ).save_pretrained(str(path))
     return path
+
+
+def build_tiny_lora(sd_path: Path, target: Path, seed: int) -> Path:
+    """A random LoRA file for the tiny SD UNet (non-zero B, so it visibly changes images)."""
+    import torch
+    from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+    from peft import LoraConfig
+    from peft.utils import get_peft_model_state_dict
+
+    torch.manual_seed(seed)
+    unet = UNet2DConditionModel.from_pretrained(str(sd_path / "unet"))
+    unet.add_adapter(
+        LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+        )
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    StableDiffusionPipeline.save_lora_weights(
+        str(target.parent),
+        unet_lora_layers=get_peft_model_state_dict(unet),
+        weight_name=target.name,
+    )
+    return target

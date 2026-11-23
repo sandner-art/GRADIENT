@@ -32,7 +32,7 @@ from gradient.core.resource_manager import resource_manager
 from gradient.model_manager.inventory import dir_size, find_model_path, get_manifest_meta
 
 from .loading_embeddings import load_textual_inversions
-from .loading_loras import apply_loras_to_pipeline, unload_lora_weights
+from .loading_loras import activate_loras
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,11 @@ class LoadedPipeline:
     derived: dict[str, DiffusionPipeline] = field(default_factory=dict)
     lora_signature: tuple = ()
     embeddings: set[str] = field(default_factory=set)
+    # LoRA adapters kept loaded on this pipeline: LoRA name -> adapter name (LRU order)
+    adapters: "OrderedDict[str, str]" = field(default_factory=OrderedDict)
+    active_adapters: list[str] = field(default_factory=list)
+    lora_disabled: bool = False
+    unmatched: set[str] = field(default_factory=set)
 
 
 # LRU cache of base pipelines, most recently used last
@@ -437,10 +442,7 @@ def get_pipeline(
         (getattr(lora, "name", None), float(getattr(lora, "weight", 1.0))) for lora in (loras or [])
     )
     if signature != entry.lora_signature:
-        if entry.lora_signature:
-            unload_lora_weights(pipe)
-        if signature:
-            apply_loras_to_pipeline(pipe, loras)
+        activate_loras(pipe, entry, loras)  # loads new LoRAs only; weights are a set_adapters call
         entry.lora_signature = signature
     if embeddings:
         entry.embeddings |= load_textual_inversions(

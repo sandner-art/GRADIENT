@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0 (2026-11-23)
+
+### Rendering and queue
+- **Render queue**: Text-to-Image and Image-to-Image queue their work and return at once, so you can keep changing settings and queueing. *Batch count* repeats a job (with a fixed seed, job *i* uses `seed + i`); *One job per line* renders a list of prompts. XYZ grids and Lab tools go through the same queue (Lab requests first), so one GPU job runs at a time.
+- **Queue panel** in the header: progress of the running job with **Stop** (between sampler steps), waiting jobs with run next / up / down / remove, finished jobs with **Gallery** and **Retry**. Live over server-sent events, with a polling fallback.
+- The queue survives restarts: jobs are kept in the database (without input images), and jobs that were unfinished at shutdown come back as failed and retryable.
+- New render form for both tabs: prompt with Ctrl+Enter, LoRAs with weight sliders, size presets with swap, seed dice, images per job and batch count, custom sigmas and embeddings under *Advanced*. Finished renders show as tiles under the form; a notice with **View** appears when a render finishes while you're on another tab.
+- **LoRA hot-swap**: LoRAs stay loaded as named adapters per model. Changing weights, switching back to a LoRA you've used or rendering without LoRAs no longer reloads anything (the image without LoRAs is bit-identical to a plain render). Least recently used LoRAs are unloaded beyond `performance.max_loaded_loras` (default 6).
+
+### Gallery
+- **Gallery** tab for everything GRADIENT has rendered: search prompts and notes, filter by model, type, rating, tag and favourites, sort by date or rating, adjustable tile size, infinite scrolling. Star ratings, favourites, tags and notes; Shift/Ctrl selection with bulk rate, favourite, tag and delete. A *Runs* view lists renders, grids and Lab runs with status and errors.
+- **Viewer** with keyboard shortcuts (←/→, 1–5, F, I, Delete, Esc), details, tags and notes. **Use settings** (optionally with a new seed) restores the model, prompt, LoRAs and every other setting into the form; **Use as input** sends the image to Image-to-Image; **Open in Lab** copies the settings to the Lab.
+- **Lab results are saved** as runs (image, maps and `report.json`) and appear in the gallery.
+- Deleting moves files to `<outputs>/.trash/<run>/`. Thumbnails are WebP files cached in `<outputs>/.thumbs`.
+- PNGs also carry an A1111-style `parameters` text (prompt, negative prompt, steps, sampler, CFG, seed, size, model, LoRAs), which image managers and taggers can read.
+
+### API
+- `POST/GET /api/v1/queue`, `GET /queue/events` (SSE), `/queue/{id}` with `cancel`, `move`, `retry`; `DELETE /queue/finished`.
+- `/api/v1/history/...`: outputs with filters and paging, single output with `PATCH`/`DELETE`, bulk actions, image and thumbnail files, facets, runs.
+- Generation responses include `run_uuid` and each image's `output_id`; a job stopped from the queue returns `409`.
+
+### Database
+- Older databases upgrade on start: new gallery columns (`favorite`, `notes`, `model_id`, `prompt`, `seed`, `width`, `height`) are added and filled from the stored parameters; old comma-separated tags move to the new `output_tags` table (each tag has a source and an optional confidence, ready for tags from other tools). New `queue_jobs` table.
+- SQLite runs in WAL mode with a busy timeout, and sessions roll back cleanly when a job is cancelled.
+
+### Tests
+- 13 new backend tests: queue submit, seed steps, cancel, reorder, retry, SSE, Lab runs in the gallery, PNG metadata, gallery browse/filter/edit/delete, the upgrade of an older database, and LoRA caching (no reloads, eviction, LoRA off gives an identical image). Frontend unit tests for the queue state, gallery filters and *Use settings*.
+
 ## 0.4.0 (2026-10-30)
 
 ### Lab

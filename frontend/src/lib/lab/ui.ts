@@ -8,6 +8,8 @@ export const input =
 	'w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white';
 export const smallInput =
 	'w-full rounded-md border border-gray-300 px-2 py-1 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white';
+/** An input style with its own width instead of full width (class order can't override it). */
+export const sized = (cls: string, width: string) => cls.replace('w-full', width);
 export const help = 'mt-1 text-xs text-gray-500 dark:text-gray-400';
 export const primaryButton =
 	'inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50';

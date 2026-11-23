@@ -13,8 +13,8 @@ from gradient.ai.diffusion.models import (
     XYZGridRequest,
     XYZGridResponse,
 )
-from gradient.ai.diffusion.pipelines import run_image_to_image, run_text_to_image
-from gradient.ai.diffusion.xyz_grid import run_xyz_grid
+from gradient.api.job_kinds import label_for
+from gradient.core.jobs import JobCancelledError, job_queue
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,6 +24,8 @@ def to_http_error(e: Exception, what: str) -> HTTPException:
     """Map generation errors to useful HTTP responses."""
     if isinstance(e, HTTPException):
         return e
+    if isinstance(e, JobCancelledError):
+        return HTTPException(status_code=409, detail=f"The {what} job was cancelled")
     if isinstance(e, (ValueError, FileNotFoundError)):
         return HTTPException(status_code=400, detail=str(e))
     if isinstance(e, (MemoryError, torch.OutOfMemoryError)):
@@ -35,13 +37,19 @@ def to_http_error(e: Exception, what: str) -> HTTPException:
     return HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
+async def _queued(kind: str, request):
+    """Run through the render queue and wait: API calls show up in the queue panel too."""
+    payload = request.model_dump(mode="json", exclude_unset=True)
+    return await job_queue.run(kind, payload, label_for(kind, payload))
+
+
 @router.post(
     "/text-to-image", response_model=Text2ImageResponse, summary="Generate images from text prompts"
 )
 async def handle_text_to_image(request: Text2ImageRequest = Body(...)):
     logger.info("text-to-image request: %s", request.model_id)
     try:
-        return await run_text_to_image(request)
+        return await _queued("text_to_image", request)
     except Exception as e:
         raise to_http_error(e, "text-to-image") from e
 
@@ -54,7 +62,7 @@ async def handle_text_to_image(request: Text2ImageRequest = Body(...)):
 async def handle_image_to_image(request: ImageToImageRequest = Body(...)):
     logger.info("image-to-image request: %s", request.model_id)
     try:
-        return await run_image_to_image(request)
+        return await _queued("image_to_image", request)
     except Exception as e:
         raise to_http_error(e, "image-to-image") from e
 
@@ -67,7 +75,6 @@ async def handle_image_to_image(request: ImageToImageRequest = Body(...)):
 async def handle_xyz_grid(request: XYZGridRequest = Body(...)):
     logger.info("XYZ grid request: %s", request.base_parameters.model_id)
     try:
-        grid_results = await run_xyz_grid(request)
-        return XYZGridResponse(grid_results=grid_results, request_params=request)
+        return await _queued("xyz_grid", request)
     except Exception as e:
         raise to_http_error(e, "XYZ grid generation") from e

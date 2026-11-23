@@ -7,7 +7,7 @@ freezes every other request (status polling, downloads, the UI). `run_gpu_task`
 executes such work in a worker thread while a single asyncio lock serializes
 access to the accelerator, so jobs queue instead of fighting over VRAM.
 
-This is the foundation for the planned TaskScheduler (queue + job status).
+The render queue (gradient.core.jobs) runs every job through this lock.
 """
 
 import asyncio
@@ -64,6 +64,9 @@ class ProgressTracker:
         self.state: dict[str, Any] | None = None
 
     def start(self, task: str, model_id: str, total_steps: int) -> None:
+        from gradient.core.jobs import report_progress
+
+        report_progress(step=0, total=total_steps)
         self.state = {
             "task": task,
             "model_id": model_id,
@@ -73,6 +76,9 @@ class ProgressTracker:
         }
 
     def update(self, step: int) -> None:
+        from gradient.core.jobs import report_progress
+
+        report_progress(step=step)
         if self.state is not None:
             self.state["step"] = step
 
@@ -84,13 +90,3 @@ class ProgressTracker:
 
 
 progress_tracker = ProgressTracker()
-
-
-class TaskScheduler:
-    """Placeholder for a future persistent job queue (submit/status/cancel)."""
-
-    async def submit_task(self, task_fn, *args, **kwargs):
-        return await run_gpu_task(task_fn, *args, **kwargs)
-
-
-task_scheduler = TaskScheduler()

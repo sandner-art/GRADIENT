@@ -25,12 +25,25 @@ from gradient.ai.lab.models import (
 )
 from gradient.ai.lab.probes import attention_layers
 from gradient.ai.lab.taylor import taylor_preview
+from gradient.api.job_kinds import label_for, register_lab_kind
+from gradient.core.jobs import PRIORITY_INTERACTIVE, job_queue
 from gradient.core.scheduling import run_gpu_task
 
 from .generate import to_http_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Lab tools run as interactive queue jobs (ahead of batch renders) and are saved as runs
+TAYLOR = register_lab_kind("taylor", taylor_preview, TaylorRequest)
+ATTENTION = register_lab_kind("attention", attention_maps, AttentionMapRequest)
+CONCEPTS = register_lab_kind("concept_attention", concept_attention_maps, ConceptAttentionRequest)
+ABLATION = register_lab_kind("token_ablation", token_ablation, AblationRequest)
+
+
+async def _run_lab(kind: str, request):
+    payload = request.model_dump(mode="json")
+    return await job_queue.run(kind, payload, label_for(kind, payload), PRIORITY_INTERACTIVE)
 
 
 @router.post(
@@ -40,7 +53,7 @@ router = APIRouter()
 )
 async def handle_taylor(request: TaylorRequest = Body(...)):
     try:
-        return await run_gpu_task(taylor_preview, request)
+        return await _run_lab(TAYLOR, request)
     except Exception as e:
         raise to_http_error(e, "Taylor preview") from e
 
@@ -52,7 +65,7 @@ async def handle_taylor(request: TaylorRequest = Body(...)):
 )
 async def handle_attention_maps(request: AttentionMapRequest = Body(...)):
     try:
-        return await run_gpu_task(attention_maps, request)
+        return await _run_lab(ATTENTION, request)
     except Exception as e:
         raise to_http_error(e, "attention maps") from e
 
@@ -64,7 +77,7 @@ async def handle_attention_maps(request: AttentionMapRequest = Body(...)):
 )
 async def handle_concept_attention(request: ConceptAttentionRequest = Body(...)):
     try:
-        return await run_gpu_task(concept_attention_maps, request)
+        return await _run_lab(CONCEPTS, request)
     except Exception as e:
         raise to_http_error(e, "concept attention") from e
 
@@ -76,7 +89,7 @@ async def handle_concept_attention(request: ConceptAttentionRequest = Body(...))
 )
 async def handle_token_ablation(request: AblationRequest = Body(...)):
     try:
-        return await run_gpu_task(token_ablation, request)
+        return await _run_lab(ABLATION, request)
     except Exception as e:
         raise to_http_error(e, "token ablation") from e
 
