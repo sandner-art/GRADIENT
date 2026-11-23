@@ -3,10 +3,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import ExportDialog from './ExportDialog.svelte';
+	import ProjectsPanel from './ProjectsPanel.svelte';
 	import RatingStars from './RatingStars.svelte';
 	import {
 		bulkAction,
 		deleteRun,
+		exportFilter,
 		getFacets,
 		listOutputs,
 		listRuns,
@@ -22,7 +25,11 @@
 	import { apiErrorMessage } from '#lib/utils/format.js';
 
 	const PAGE = 60;
-	let view = $state<'images' | 'runs'>('images');
+	let view = $state<'images' | 'runs' | 'projects'>('images');
+	let exporting = $state<{
+		target: { ids: number[] } | { filter: Record<string, unknown> };
+		count: number;
+	} | null>(null);
 	let size = $state(180);
 	let search = $state(ui.galleryFilter.q ?? '');
 	const selected = new SvelteSet<number>();
@@ -38,7 +45,7 @@
 	const f = $derived(ui.galleryFilter);
 	const ids = $derived(gallery.items.map((i) => i.id));
 	const activeFilters = $derived(
-		!!(f.run || f.model || f.run_type || f.q || f.min_rating || f.favorite || f.tag)
+		!!(f.run || f.model || f.run_type || f.q || f.min_rating || f.favorite || f.tag || f.project)
 	);
 
 	function setFilter(changes: Partial<GalleryFilter>) {
@@ -228,12 +235,12 @@
 	<div class="{ui_.card} space-y-3">
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Gallery view">
-				{#each [['images', 'Images'], ['runs', 'Runs']] as [id, label], i (id)}
+				{#each [['images', 'Images'], ['runs', 'Runs'], ['projects', 'Projects']] as [id, label], i (id)}
 					<button
 						type="button"
 						class="border border-gray-300 px-3 py-1.5 text-sm font-medium dark:border-gray-600"
 						class:rounded-l-md={i === 0}
-						class:rounded-r-md={i === 1}
+						class:rounded-r-md={i === 2}
 						class:bg-indigo-600={view === id}
 						class:text-white={view === id}
 						aria-pressed={view === id}
@@ -245,7 +252,7 @@
 				{#if view === 'images'}{gallery.total} image{gallery.total === 1
 						? ''
 						: 's'}{#if gallery.facets && activeFilters}
-						of {gallery.facets.total}{/if}{:else}{runsTotal} runs{/if}
+						of {gallery.facets.total}{/if}{:else if view === 'runs'}{runsTotal} runs{/if}
 			</span>
 		</div>
 
@@ -304,6 +311,19 @@
 							>{t.tag} ({t.count})</option
 						>{/each}
 				</select>
+				{#if gallery.facets?.projects?.length}
+					<select
+						class={ui_.sized(ui_.smallInput, 'w-auto pr-8')}
+						aria-label="Project"
+						value={f.project ?? ''}
+						onchange={(e) => setFilter({ project: e.currentTarget.value || null })}
+					>
+						<option value="">Any project</option>
+						{#each gallery.facets.projects as pr (pr.uuid)}<option value={pr.uuid}
+								>{pr.name} ({pr.count})</option
+							>{/each}
+					</select>
+				{/if}
 				<button
 					type="button"
 					class="rounded border px-2 py-1 text-sm"
@@ -323,7 +343,18 @@
 					<option value="oldest">Oldest first</option>
 					<option value="rating">Best rated</option>
 				</select>
-				<label class="ml-auto flex items-center gap-2 text-xs text-gray-500">
+				<button
+					type="button"
+					class="{ui_.secondaryButton} ml-auto"
+					disabled={!gallery.total}
+					title="Copy the images this view shows into a project folder for Kurator, ArtAgents …"
+					onclick={() =>
+						(exporting = {
+							target: { filter: exportFilter(ui.galleryFilter) },
+							count: gallery.total
+						})}>Export {gallery.total}…</button
+				>
+				<label class="flex items-center gap-2 text-xs text-gray-500">
 					Size <input
 						type="range"
 						min="110"
@@ -346,6 +377,19 @@
 								class="ml-1"
 								aria-label="Remove run filter"
 								onclick={() => setFilter({ run: null })}>✕</button
+							>
+						</span>
+					{/if}
+					{#if f.project}
+						<span
+							class="rounded bg-emerald-100 px-2 py-0.5 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100"
+						>
+							project {gallery.facets?.projects?.find((p) => p.uuid === f.project)?.name ?? '…'}
+							<button
+								type="button"
+								class="ml-1"
+								aria-label="Remove project filter"
+								onclick={() => setFilter({ project: null })}>✕</button
 							>
 						</span>
 					{/if}
@@ -493,6 +537,12 @@
 				>
 				<button
 					type="button"
+					class={ui_.secondaryButton}
+					onclick={() => (exporting = { target: { ids: [...selected] }, count: selected.size })}
+					>Export…</button
+				>
+				<button
+					type="button"
 					class="rounded px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
 					class:bg-red-100={confirmBulkDelete}
 					onclick={() => (confirmBulkDelete ? bulk('delete') : (confirmBulkDelete = true))}
@@ -515,6 +565,18 @@
 				</span>
 			</div>
 		{/if}
+	{:else if view === 'projects'}
+		<ProjectsPanel
+			onshow={(uuid) => {
+				search = '';
+				ui.galleryFilter = { sort: f.sort ?? 'newest', project: uuid };
+				view = 'images';
+			}}
+			onchange={() => {
+				refreshFacets();
+				load(true, true);
+			}}
+		/>
 	{:else}
 		<div class="space-y-2">
 			{#if !runs.length}<p class="{ui_.card} {ui_.muted}">No runs yet.</p>{/if}
@@ -590,3 +652,12 @@
 		</div>
 	{/if}
 </div>
+
+{#if exporting}
+	<ExportDialog
+		target={exporting.target}
+		count={exporting.count}
+		onclose={() => (exporting = null)}
+		ondone={() => refreshFacets()}
+	/>
+{/if}

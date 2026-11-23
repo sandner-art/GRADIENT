@@ -49,7 +49,8 @@ GRADIENT's thesis still holds, and few tools serve it: a local **lab for diffusi
 |---|---|
 | Task queue (M1) | **Done**: one asyncio worker with persisted jobs, priorities (Lab ahead of batch renders), cancel between sampler steps, reorder, retry, SSE progress; the synchronous endpoints and XYZ grids run through it |
 | Output browsing and annotation | **Done**: gallery with filters, ratings, favourites, notes, tags with a source and confidence (ready for external taggers), bulk edits, per-run view; Lab results saved as runs with `report.json` |
-| Interoperable metadata | **Done**: A1111-style `parameters` chunk next to `grad_parameters`, readable by image managers and taggers. Open: project-folder export/import (XMP sidecars, caption files) for Kurator and ArtAgents |
+| Interoperable metadata | **Done**: A1111-style `parameters` chunk next to `grad_parameters`, readable by image managers and taggers |
+| Hand-off to curation and captioning tools (v0.6.0) | **Done**: project folders with XMP sidecars (keywords, rating, prompt; Kurator/digiKam/Lightroom layout) and a manifest; sync reads back added/removed keywords (source `xmp`), changed ratings, and `name.txt` captions under a per-captioner label; renamed files are found by content. Open: a captioner/tagger benchmark (agreement between labels, against ConceptAttention maps and prompts) |
 | Fast everyday rendering | **Done**: LoRA adapters stay loaded per model (LRU, `max_loaded_loras`), batch count and one job per prompt line. Open: quantized models (GGUF, bitsandbytes, TorchAO) with a paired fidelity report |
 
 ## 2. Code reality check (at `afc072c`)

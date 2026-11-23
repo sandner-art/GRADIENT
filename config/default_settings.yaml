@@ -21,6 +21,9 @@ paths:
   # are resolved against the project root.
   outputs: "./experiments"
   data: "./data"
+  # Project folders exported from the gallery (for Kurator, ArtAgents, digiKam ...).
+  # null: <data>/projects
+  projects: null
   models:
     # Base search directories, in priority order. The FIRST entry is also where
     # the built-in model downloader stores new models.

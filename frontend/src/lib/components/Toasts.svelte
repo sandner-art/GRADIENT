@@ -3,8 +3,13 @@
 	import { dismiss, ui } from '#lib/stores/ui.svelte.js';
 </script>
 
+<!-- top right; over the image (bottom left) while the viewer's details panel is open -->
 <div
-	class="pointer-events-none fixed top-20 right-4 z-[60] flex w-80 flex-col gap-2"
+	class="pointer-events-none fixed z-[60] flex w-80 flex-col gap-2"
+	class:top-20={!ui.viewer}
+	class:right-4={!ui.viewer}
+	class:bottom-4={!!ui.viewer}
+	class:left-4={!!ui.viewer}
 	aria-live="polite"
 >
 	{#each ui.toasts as toast (toast.id)}

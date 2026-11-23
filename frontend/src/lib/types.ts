@@ -419,6 +419,10 @@ export interface GalleryDetail extends GalleryItem {
 	file_path: string;
 	exists: boolean;
 	run_status: string | null;
+	/** captions from other tools, one per source label */
+	captions: { source: string; text: string; updated: string | null }[];
+	/** project folders this image was exported to */
+	projects: { uuid: string; name: string; file_name: string }[];
 }
 
 export interface GalleryPage {
@@ -445,8 +449,55 @@ export interface GalleryFacets {
 	models: { model_id: string; count: number }[];
 	run_types: { run_type: string; count: number }[];
 	tags: { tag: string; count: number }[];
+	projects: { uuid: string; name: string; count: number }[];
 	total: number;
 	favorites: number;
+}
+
+/** A project folder shared with other tools (Kurator, ArtAgents, digiKam ...). */
+export interface ProjectInfo {
+	uuid: string;
+	name: string;
+	path: string;
+	created: string | null;
+	updated: string | null;
+	last_sync: string | null;
+	count: number;
+	exists: boolean;
+	options: Partial<ExportOptions>;
+}
+
+export interface ExportOptions {
+	sidecars: boolean;
+	model_keywords: boolean;
+	captions: 'none' | 'prompt';
+	link: boolean;
+}
+
+export interface SyncReport {
+	files: number;
+	renamed: { from: string; to: string }[];
+	missing: string[];
+	not_in_gallery: number;
+	tags_added: number;
+	tags_removed: number;
+	ratings_changed: number;
+	captions: number;
+	unreadable_sidecars: string[];
+	unknown_files: string[];
+	unknown_count: number;
+	project: ProjectInfo;
+}
+
+export interface ExportResult {
+	added: number;
+	updated: number;
+	missing_source: number[];
+	kept_foreign_sidecars: string[];
+	kept_captions: number;
+	errors: string[];
+	sync?: SyncReport;
+	project: ProjectInfo;
 }
 
 export interface GalleryFilter {
@@ -457,6 +508,7 @@ export interface GalleryFilter {
 	min_rating?: number | null;
 	favorite?: boolean | null;
 	tag?: string | null;
+	project?: string | null;
 	sort?: 'newest' | 'oldest' | 'rating';
 }
 // --- Gallery --- ^^^

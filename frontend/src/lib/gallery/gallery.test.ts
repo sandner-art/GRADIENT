@@ -1,7 +1,7 @@
 // frontend/src/lib/gallery/gallery.test.ts
 import { describe, expect, it } from 'vitest';
 
-import { filterQuery, runTypeLabel } from './api.js';
+import { exportFilter, filterQuery, runTypeLabel, tagSourceLabel } from './api.js';
 import {
 	applyEvent,
 	jobFraction,
@@ -42,6 +42,29 @@ describe('filterQuery', () => {
 	});
 	it('passes true flags as strings', () => {
 		expect(filterQuery({ favorite: true })).toContain('favorite=true');
+	});
+});
+
+describe('exportFilter', () => {
+	it('keeps only real filters (no sort, no empty values)', () => {
+		expect(
+			exportFilter({
+				sort: 'rating',
+				q: 'cat',
+				model: null,
+				favorite: false,
+				tag: '',
+				project: 'p1'
+			})
+		).toEqual({ q: 'cat', project: 'p1' });
+	});
+});
+
+describe('tagSourceLabel', () => {
+	it('explains where a tag came from', () => {
+		expect(tagSourceLabel('manual')).toBe('yours');
+		expect(tagSourceLabel('xmp')).toContain('Kurator');
+		expect(tagSourceLabel('artagents:llava')).toBe('from artagents:llava');
 	});
 });
 

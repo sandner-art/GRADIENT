@@ -111,6 +111,50 @@ class OutputTag(Base):
     __table_args__ = (UniqueConstraint("output_id", "tag", "source", name="_output_tag_uc"),)
 
 
+class OutputCaption(Base):
+    """A caption for an output, one per source (e.g. an ArtAgents caption file, synced back)."""
+
+    __tablename__ = "output_captions"
+
+    id = Column(Integer, primary_key=True)
+    output_id = Column(
+        Integer, ForeignKey("generated_outputs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source = Column(String, nullable=False)
+    text = Column(Text, nullable=False)
+    updated = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("output_id", "source", name="_output_caption_uc"),)
+
+
+class Project(Base):
+    """A folder of exported images shared with other tools (Kurator, ArtAgents, digiKam ...)."""
+
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    path = Column(String, unique=True, nullable=False)
+    created = Column(DateTime, default=_utcnow, nullable=False)
+    updated = Column(DateTime, default=_utcnow, nullable=False)  # last export
+    last_sync = Column(DateTime, nullable=True)
+    options = Column(JSON, nullable=True)  # export options used last time
+
+
+class ProjectItem(Base):
+    """An output exported into a project folder."""
+
+    __tablename__ = "project_items"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    output_id = Column(
+        Integer, ForeignKey("generated_outputs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_name = Column(String, nullable=False)
+    __table_args__ = (UniqueConstraint("project_id", "output_id", name="_project_item_uc"),)
+
+
 class QueueJob(Base):
     """A job of the render queue (kept for the queue panel's history and retries)."""
 

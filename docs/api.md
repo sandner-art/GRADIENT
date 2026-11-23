@@ -81,7 +81,16 @@ One worker renders jobs in order; Lab requests run ahead of waiting renders. Job
 *   **`GET /history/facets`**: models, run types and tags with counts, plus the totals.
 *   **`GET /history/runs`**: runs with status, model, prompt, image count, cover image ids and error. Finished runs with no images left are hidden unless `include_empty=true`. **`DELETE /history/runs/{uuid}`** moves the run's folder to the trash.
 
-Tags record their `source` (`manual` for tags set in GRADIENT) and an optional `confidence`, ready for tags imported from other tools.
+Tags record their `source` (`manual` for tags set in GRADIENT, `xmp` for keywords read from project sidecars, or a caption label) and an optional `confidence`. The bulk `remove_tags` action removes a tag from every source. `GET /history/outputs` also takes `project` (a project uuid); the single-image view adds `captions` (`source`, `text`, `updated`) and `projects` (`uuid`, `name`, `file_name`).
+
+### Projects (`/projects`)
+
+Project folders for other tools; see the [user guide](user_guide.md#project-folders-kurator-artagents-digikam).
+
+*   **`GET /projects`**: `items` (`uuid`, `name`, `path`, `count`, `created`, `updated`, `last_sync`, `exists`, `options`) and `root` (the default folder for new projects: `paths.projects`, or `<data>/projects`; env `GRADIENT_PROJECTS_DIR`). **`GET /projects/{uuid}`**: one project.
+*   **`POST /projects/export`**: `ids` *or* `filter` (gallery filter keys: `run`, `model`, `run_type`, `q`, `min_rating`, `favorite`, `tag`, `project`), plus `project` (uuid, to add to it) *or* `name` (and optional `path`) for a new one. Options: `sidecars` (default true), `model_keywords` (default true), `captions` (`none` or `prompt`), `link` (hard links). Returns `added`, `updated`, `kept_captions`, `kept_foreign_sidecars`, `missing_source`, `errors`, `project`, and `sync` when the project existed. A non-empty folder that isn't a project is refused (`400`).
+*   **`POST /projects/{uuid}/sync`**: `caption_source` (label for `name.txt` captions, default `artagents`), `captions_as_tags`. Returns counts (`tags_added`, `tags_removed`, `ratings_changed`, `captions`), `renamed`, `missing`, `unknown_files`, `unreadable_sidecars`, `project`.
+*   **`POST /projects/open`**: `{"path": ...}` adds an existing project folder (moved, or forgotten) and syncs it. **`DELETE /projects/{uuid}`** forgets a project; its folder stays.
 
 ### Lab (`/lab`)
 

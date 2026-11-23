@@ -20,7 +20,14 @@ from sqlalchemy import delete, desc, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from gradient.core.config import get_outputs_dir
-from gradient.database.models import ExperimentRun, GeneratedOutput, OutputTag
+from gradient.database.models import (
+    ExperimentRun,
+    GeneratedOutput,
+    OutputCaption,
+    OutputTag,
+    Project,
+    ProjectItem,
+)
 from gradient.database.session import get_db_session
 
 from .metadata import output_fields, png_info
@@ -94,7 +101,7 @@ def output_view(o: GeneratedOutput, detail: bool = False) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- listing
-async def list_outputs(
+def filtered_outputs(
     *,
     run: str | None = None,
     model: str | None = None,
@@ -103,14 +110,12 @@ async def list_outputs(
     min_rating: int | None = None,
     favorite: bool | None = None,
     tag: str | None = None,
+    project: str | None = None,
     since: datetime.datetime | None = None,
     until: datetime.datetime | None = None,
     output_type: str | None = "image",
-    sort: str = "newest",
-    offset: int = 0,
-    limit: int = 60,
-) -> dict[str, Any]:
-    limit = max(1, min(limit, MAX_PAGE))
+):
+    """The gallery query (without order and paging) for these filters."""
     stmt = select(GeneratedOutput).join(ExperimentRun, GeneratedOutput.run_id == ExperimentRun.id)
     if output_type:
         stmt = stmt.where(GeneratedOutput.output_type == output_type)
@@ -137,10 +142,30 @@ async def list_outputs(
         stmt = stmt.where(
             GeneratedOutput.id.in_(select(OutputTag.output_id).where(OutputTag.tag == tag))
         )
+    if project:
+        stmt = stmt.where(
+            GeneratedOutput.id.in_(
+                select(ProjectItem.output_id)
+                .join(Project, ProjectItem.project_id == Project.id)
+                .where(Project.uuid == project)
+            )
+        )
     if since:
         stmt = stmt.where(GeneratedOutput.creation_time >= since)
     if until:
         stmt = stmt.where(GeneratedOutput.creation_time < until)
+    return stmt
+
+
+async def list_outputs(
+    *,
+    sort: str = "newest",
+    offset: int = 0,
+    limit: int = 60,
+    **filters: Any,
+) -> dict[str, Any]:
+    limit = max(1, min(limit, MAX_PAGE))
+    stmt = filtered_outputs(**filters)
 
     order = {
         "oldest": [GeneratedOutput.creation_time, GeneratedOutput.id],
@@ -173,7 +198,35 @@ async def list_outputs(
 async def get_output(output_id: int, detail: bool = True) -> dict[str, Any]:
     async with get_db_session() as db:
         o = await _load(db, output_id)
-        return output_view(o, detail=detail)
+        view = output_view(o, detail=detail)
+        if detail:
+            view.update(await _extras(db, output_id))
+        return view
+
+
+async def _extras(db, output_id: int) -> dict[str, Any]:
+    """Captions (one per source) and the projects an image was exported to."""
+    captions = (
+        await db.scalars(
+            select(OutputCaption)
+            .where(OutputCaption.output_id == output_id)
+            .order_by(OutputCaption.source)
+        )
+    ).all()
+    projects = (
+        await db.execute(
+            select(Project.uuid, Project.name, ProjectItem.file_name)
+            .join(ProjectItem, ProjectItem.project_id == Project.id)
+            .where(ProjectItem.output_id == output_id)
+            .order_by(Project.name)
+        )
+    ).all()
+    return {
+        "captions": [
+            {"source": c.source, "text": c.text, "updated": _iso(c.updated)} for c in captions
+        ],
+        "projects": [{"uuid": u, "name": n, "file_name": f} for u, n, f in projects],
+    }
 
 
 async def _load(db, output_id: int) -> GeneratedOutput:
@@ -303,6 +356,14 @@ async def facets() -> dict[str, Any]:
                 .limit(300)
             )
         ).all()
+        projects = (
+            await db.execute(
+                select(Project.uuid, Project.name, func.count(ProjectItem.id))
+                .outerjoin(ProjectItem, ProjectItem.project_id == Project.id)
+                .group_by(Project.id)
+                .order_by(Project.name)
+            )
+        ).all()
         total = await db.scalar(select(func.count()).where(images))
         favorites = await db.scalar(
             select(func.count()).where(images, GeneratedOutput.favorite.is_(True))
@@ -311,6 +372,7 @@ async def facets() -> dict[str, Any]:
         "models": [{"model_id": m or "", "count": n} for m, n in models],
         "run_types": [{"run_type": t, "count": n} for t, n in types],
         "tags": [{"tag": t, "count": n} for t, n in tags],
+        "projects": [{"uuid": u, "name": n, "count": c} for u, n, c in projects],
         "total": total or 0,
         "favorites": favorites or 0,
     }
@@ -354,7 +416,7 @@ async def update_output(
             o.tags = keep + [OutputTag(tag=t, source="manual") for t in wanted if t not in have]
         await db.flush()
         await db.refresh(o, ["tags"])
-        return output_view(o, detail=True)
+        return output_view(o, detail=True) | await _extras(db, output_id)
 
 
 async def bulk(ids: list[int], action: str, value: Any = None) -> dict[str, Any]:
@@ -387,7 +449,7 @@ async def bulk(ids: list[int], action: str, value: Any = None) -> dict[str, Any]
                 )
             elif action == "remove_tags":
                 drop = set(_clean_tags(value or []))
-                o.tags = [t for t in o.tags if not (t.source == "manual" and t.tag in drop)]
+                o.tags = [t for t in o.tags if t.tag not in drop]
             else:
                 raise ValueError(f"Unknown action '{action}'")
     return {"changed": len(rows)}
@@ -420,6 +482,9 @@ async def delete_outputs(ids: list[int]) -> int:
             )
         ).all()
         files = [(o.id, Path(o.file_path), o.run.run_uuid if o.run else None) for o in rows]
+        gone = [o.id for o in rows]
+        await db.execute(delete(OutputCaption).where(OutputCaption.output_id.in_(gone)))
+        await db.execute(delete(ProjectItem).where(ProjectItem.output_id.in_(gone)))
         for o in rows:
             await db.delete(o)
     await asyncio.to_thread(_trash_files, files)

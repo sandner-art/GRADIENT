@@ -20,6 +20,7 @@ from .endpoints import lab as lab_endpoints
 from .endpoints import llm as llm_endpoints
 from .endpoints import models as models_endpoints
 from .endpoints import presets as presets_endpoints
+from .endpoints import projects as projects_endpoints
 from .endpoints import queue as queue_endpoints
 from .endpoints import status as status_endpoints
 from .endpoints import system as system_endpoints
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     APP_VERSION = version("gradient-workbench")
 except PackageNotFoundError:  # running from a source checkout without install
-    APP_VERSION = "0.5.0"
+    APP_VERSION = "0.6.0"
 
 FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 
@@ -78,6 +79,7 @@ app.include_router(models_endpoints.router, prefix="/api/v1", tags=["Models"])
 app.include_router(lab_endpoints.router, prefix="/api/v1", tags=["Lab"])
 app.include_router(queue_endpoints.router, prefix="/api/v1", tags=["Queue"])
 app.include_router(history_endpoints.router, prefix="/api/v1", tags=["Gallery"])
+app.include_router(projects_endpoints.router, prefix="/api/v1", tags=["Projects"])
 app.include_router(websocket_endpoints.router, tags=["WebSocket"])
 
 

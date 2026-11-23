@@ -95,6 +95,8 @@ def load_settings() -> None:
         paths_cfg["data"] = data_dir
     if outputs_dir := os.getenv("GRADIENT_OUTPUTS_DIR"):
         paths_cfg["outputs"] = outputs_dir
+    if projects_dir := os.getenv("GRADIENT_PROJECTS_DIR"):
+        paths_cfg["projects"] = projects_dir
 
     models_cfg = paths_cfg.setdefault("models", {})
     if model_dir := os.getenv("GRADIENT_MODEL_DIR"):

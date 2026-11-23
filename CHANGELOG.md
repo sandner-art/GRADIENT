@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 (2026-11-23)
+
+### Project folders (Kurator, ArtAgents, digiKam)
+- **Export** gallery images (a selection, or everything the current filters show) into a project folder: copies of the images, an XMP sidecar per image (`name.png.xmp`: tags, rating, prompt, `Projects/<name>`, optional `GRADIENT/Model/...` and `GRADIENT/Type/...` keywords, in the layout Lightroom, digiKam and Kurator use) and `gradient-project.json`. Optional prompt caption files (`name.txt`); caption files from other tools are never overwritten. Hard links instead of copies on request.
+- **Sync** reads a project folder back: keywords added by another program become tags with source `xmp` (and are removed again when removed there; your own tags are never touched), changed `xmp:Rating` values become ratings, and caption files become captions under a label of your choice, one per label, so several captioners can be kept and compared. Files renamed by another tool are found by their content. Exporting again into a project syncs first.
+- Gallery: a *Projects* view (sync with a caption label, show a project's images, forget, add an existing folder), a *Project* filter, and *Export* for selections and for the current view.
+- Viewer: imported tags show their source and can be removed; captions and the projects an image is in are listed.
+- Toasts appear bottom-left while the viewer is open, so they don't cover its details.
+
+### API
+- `/api/v1/projects`: list, export, sync, open, forget.
+- `GET /history/outputs?project=<uuid>`; image details include `captions` and `projects`; facets include `projects`. Bulk `remove_tags` removes a tag from every source.
+- New setting `paths.projects` (default `<data>/projects`), env `GRADIENT_PROJECTS_DIR`.
+
+### Database
+- New tables `projects`, `project_items` and `output_captions` (created on start).
+
+### Tests
+- Sidecar round trip; export → edits as Kurator/ArtAgents/digiKam would make them → sync → re-export → removal → forget/reopen; export by filter and the error cases.
+
 ## 0.5.0 (2026-11-23)
 
 ### Rendering and queue

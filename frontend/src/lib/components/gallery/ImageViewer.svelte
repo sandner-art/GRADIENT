@@ -5,11 +5,13 @@
 	import RatingStars from './RatingStars.svelte';
 	import TagInput from './TagInput.svelte';
 	import {
+		bulkAction,
 		deleteOutput,
 		downloadUrl,
 		getOutput,
 		imageUrl,
 		runTypeLabel,
+		tagSourceLabel,
 		updateOutput
 	} from '#lib/gallery/api.js';
 	import { gallery, patchItem, removeItems } from '#lib/gallery/state.svelte.js';
@@ -95,6 +97,29 @@
 			});
 		} catch (e) {
 			notify(apiErrorMessage(e), 'error');
+		}
+	}
+
+	async function removeTag(tag: string) {
+		if (id === null) return;
+		try {
+			await bulkAction([id], 'remove_tags', [tag]);
+			cache.delete(id);
+			const fresh = await getOutput(id);
+			cache.set(id, fresh);
+			detail = fresh;
+			patchItem(id, { tags: fresh.tags });
+		} catch (e) {
+			notify(apiErrorMessage(e), 'error');
+		}
+	}
+
+	async function copyText(text: string, done: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			notify(done, 'success', undefined, 1500);
+		} catch {
+			notify('The browser blocked clipboard access', 'error');
 		}
 	}
 
@@ -346,15 +371,61 @@
 							<div class="mt-2 flex flex-wrap gap-1">
 								{#each otherTags as t (t.tag + t.source)}
 									<span
-										class="rounded bg-white/10 px-1.5 py-0.5 text-xs"
-										title="from {t.source}{t.confidence !== null
+										class="inline-flex items-center gap-1 rounded bg-teal-900/60 px-1.5 py-0.5 text-xs"
+										title="{tagSourceLabel(t.source)}{t.confidence !== null
 											? ` (${(t.confidence * 100).toFixed(0)}%)`
-											: ''}">{t.tag} · {t.source}</span
+											: ''}"
+										>{t.tag}
+										<span class="text-teal-300/70">{t.source}</span>
+										<button
+											type="button"
+											class="text-gray-400 hover:text-white"
+											aria-label="Remove tag {t.tag}"
+											onclick={() => removeTag(t.tag)}>×</button
+										></span
 									>
 								{/each}
 							</div>
 						{/if}
 					</div>
+
+					{#if detail.captions?.length}
+						<div class="mt-4">
+							<h3 class="mb-1 text-xs font-semibold tracking-wide text-gray-400 uppercase">
+								Captions
+							</h3>
+							<div class="space-y-2">
+								{#each detail.captions as c (c.source)}
+									<div class="rounded bg-white/5 p-2 text-sm">
+										<div class="mb-1 flex items-center justify-between text-xs text-gray-400">
+											<span>{c.source}</span>
+											<button
+												type="button"
+												class="hover:text-white"
+												onclick={() => copyText(c.text, 'Caption copied')}>Copy</button
+											>
+										</div>
+										<p class="whitespace-pre-wrap">{c.text}</p>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					{#if detail.projects?.length}
+						<p class="mt-3 text-xs text-gray-400">
+							In project{detail.projects.length > 1 ? 's' : ''}:
+							{#each detail.projects as pr, i (pr.uuid)}{i ? ', ' : ''}<button
+									type="button"
+									class="text-indigo-300 hover:underline"
+									title={pr.file_name}
+									onclick={() => {
+										closeViewer();
+										openGallery({ project: pr.uuid });
+									}}>{pr.name}</button
+								>{/each}
+						</p>
+					{/if}
 
 					<div class="mt-4">
 						<label

@@ -19,6 +19,28 @@ Deleted images go to `<outputs>/.trash/<run>/`, not straight to the recycle bin;
 
 **Metadata.** Each PNG carries the full settings as JSON (`grad_parameters`) and an A1111-style `parameters` text (prompt, negative prompt, steps, sampler, CFG, seed, size, model, LoRAs). Image managers, taggers and other UIs that read A1111 metadata can show and search them.
 
+### Project folders: Kurator, ArtAgents, digiKam
+
+A project folder hands gallery images to other tools and takes their work back. **Export** in the gallery (in the bulk bar for selected images, or *Export N…* in the toolbar for everything the current filters show) copies the images into a folder, by default `data/projects/<name>`:
+
+- `0012_t2i_…_seed5.png`: the image, with its PNG metadata;
+- `0012_t2i_…_seed5.png.xmp`: an XMP sidecar with your tags, the rating, the prompt, `Projects/<name>` and (optional) `GRADIENT/Model/<model>` and `GRADIENT/Type/<kind>` keywords;
+- `gradient-project.json`: which file is which gallery image and what GRADIENT wrote.
+
+The folder is flat, so tools that read one folder work directly. A caption file (`name.txt`) with the prompt is written only if you ask for it (dataset style), and a caption file another tool wrote is never overwritten.
+
+**Kurator.** Add the folder (or a folder above it) as a source. *Settings → XMP sidecars → Import keywords* turns GRADIENT's keywords into tags, and `Projects/<name>` puts the images in that Kurator project. To send tags back, tick *Also update sidecars of other programs* and use *Write sidecars now*: Kurator then adds its keywords to GRADIENT's sidecars and keeps everything else. (Kurator has no ratings; digiKam and Lightroom write `xmp:Rating`, which GRADIENT reads.)
+
+**ArtAgents.** In the *Captions* tab, load the folder and generate captions. They are saved next to the images as `name.txt`.
+
+**Sync** (Gallery → *Projects*) reads the folder back:
+- keywords another program added become tags marked `xmp`; keywords removed there remove those tags again. Your own GRADIENT tags are never removed by a sync;
+- a changed rating becomes the image's rating;
+- caption files become captions under the *Caption label* (default `artagents`). One caption is kept per label, so to compare captioners use one label each, for example sync with `artagents:llava`, caption again with another model, then sync with `artagents:qwen2.5vl`. *Also add comma-separated captions as tags* turns tag-style captions into tags under the same label;
+- files another tool renamed are found again by their content; missing files and unknown images are listed.
+
+Exporting again into the same project syncs first, then updates the copies and sidecars, so nothing the other tools added is lost. Tags show where they came from in the viewer (your tags are editable; imported ones can be removed with ×), and the viewer lists captions and the projects an image is in. *Show images* in the Projects view (or the *Project* filter) shows a project's images. *Forget* removes a project from the list but leaves the folder; *Add an existing project folder* brings it back (also after moving it).
+
 ### Fast rendering with LoRAs
 
 LoRAs stay loaded on the model, so changing a weight, switching between LoRAs you've used, or rendering without any (*✕* removes them) needs no reloading. Up to `performance.max_loaded_loras` (default 6) LoRAs are kept per model; the least recently used one is unloaded when you go over. A LoRA must match the model family (an SD 1.5 LoRA won't apply to SDXL): a LoRA that matches no layers of the model is skipped with a warning in the log, and a file that can't be loaded at all stops the job with an error.

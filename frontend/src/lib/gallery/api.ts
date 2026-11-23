@@ -3,11 +3,15 @@
 
 import { del, get, patch, post } from '#lib/apiClient.js';
 import type {
+	ExportOptions,
+	ExportResult,
 	GalleryDetail,
 	GalleryFacets,
 	GalleryFilter,
 	GalleryPage,
-	RunItem
+	ProjectInfo,
+	RunItem,
+	SyncReport
 } from '#lib/types.js';
 
 export function filterQuery(filter: GalleryFilter, offset = 0, limit = 60): string {
@@ -48,6 +52,44 @@ export const deleteRun = (runUuid: string) =>
 	del<{ removed: number }>(`/history/runs/${encodeURIComponent(runUuid)}`);
 
 export const getFacets = () => get<GalleryFacets>('/history/facets');
+
+// ---- project folders (src/gradient/api/endpoints/projects.py)
+export const listProjects = () => get<{ items: ProjectInfo[]; root: string }>('/projects');
+
+/** The gallery filter as the export endpoint takes it (no sort, no empty values). */
+export function exportFilter(filter: GalleryFilter): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(filter)) {
+		if (key === 'sort' || value === null || value === undefined || value === '' || value === false)
+			continue;
+		out[key] = value;
+	}
+	return out;
+}
+
+export const exportProject = (
+	body: ({ ids: number[] } | { filter: Record<string, unknown> }) &
+		({ project: string } | { name: string; path?: string | null }) &
+		Partial<ExportOptions>
+) => post<ExportResult>('/projects/export', body);
+
+export const syncProject = (uuid: string, captionSource: string, captionsAsTags: boolean) =>
+	post<SyncReport>(`/projects/${uuid}/sync`, {
+		caption_source: captionSource,
+		captions_as_tags: captionsAsTags
+	});
+
+export const openProjectFolder = (path: string, captionSource = 'artagents') =>
+	post<SyncReport>('/projects/open', { path, caption_source: captionSource });
+
+export const forgetProject = (uuid: string) => del<{ forgotten: string }>(`/projects/${uuid}`);
+
+/** Where a tag came from, for people. */
+export function tagSourceLabel(source: string): string {
+	if (source === 'manual') return 'yours';
+	if (source === 'xmp') return 'from an XMP sidecar (Kurator, digiKam, Lightroom…)';
+	return `from ${source}`;
+}
 
 export const thumbUrl = (id: number, size = 256) =>
 	`/api/v1/history/outputs/${id}/thumb?size=${size}`;
