@@ -47,6 +47,8 @@ The folder is flat, so tools that read one folder work directly. A caption file 
 
 **Test sweeps as files** (ArtAgents can't reach GRADIENT, e.g. another computer, or you want to render overnight): in ArtAgents, LoRA Lab → Test Sweep → *Export sweep for GRADIENT* writes a `.lora-sweep.json`. Here, Queue → **Import test sweep…** shows the model, the image count and each LoRA: ✓ the same file (by sha256, also when renamed), ? found by name only, ✗ missing or a different file (type the path to the right file and *Check again*). **Queue all** renders it as one gallery run. When the last image is done, GRADIENT writes a results folder (`<outputs>/sweeps/<run>-<id>/`, *Copy results path* under *Test sweeps* in the Queue panel; *Write results now* writes what is finished so far). In ArtAgents, *Import GRADIENT results* with that folder makes it a normal LoRA Lab run for grids, votes and metrics.
 
+**Metrics for ArtAgents.** ArtAgents' LoRA Lab can score test runs with GRADIENT's vision models (`/lab/embed`), so it needs no PyTorch of its own: DINO (DINOv3 or DINOv2 from the Models tab) for fidelity to the training images and drift, CLIP ViT-B/32 (Models tab, *vision*) also for prompt adherence. The Models tab shows each vision model's family (*clip*, *dinov2*…), also for models you copied into the `vision` folder yourself.
+
 **Sync** (Gallery → *Projects*) reads the folder back:
 - keywords another program added become tags marked `xmp`; keywords removed there remove those tags again. Your own GRADIENT tags are never removed by a sync;
 - a changed rating becomes the image's rating;

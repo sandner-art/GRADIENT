@@ -1158,6 +1158,31 @@ models:
     verified: true
     notes: "Size is approximate."
 
+  - id: clip-vit-b32
+    name: "CLIP ViT-B/32 (OpenAI)"
+    type: vision
+    family: clip
+    source: huggingface
+    repo_id: openai/clip-vit-base-patch32
+    revision: main
+    files: null
+    allow_patterns: ["*.json", "*.safetensors", "*.txt"]
+    ignore_patterns: null
+    variant: null
+    torch_dtype: float32
+    gated: false
+    license: mit
+    size_gb: 0.61
+    min_vram_gb: 1
+    pipeline: CLIPModel
+    base_model_family: null
+    defaults: null
+    tags: [vision, lab]
+    description: "Image and text embeddings in one space: lets other apps (ArtAgents' LoRA test scores) measure prompt adherence (CLIP-T) through /lab/embed."
+    homepage: https://huggingface.co/openai/clip-vit-base-patch32
+    verified: false
+    notes: "Size is approximate; not yet downloaded in a test."
+
   # ---------------------------------------------------------------------------
   # 6. Tiny pipelines for smoke tests (random weights; outputs are noise)
   # ---------------------------------------------------------------------------

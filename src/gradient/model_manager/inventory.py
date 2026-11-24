@@ -86,6 +86,21 @@ def _pipeline_info(folder: Path) -> dict[str, str]:
     return info
 
 
+def _vision_info(folder: Path) -> dict[str, str]:
+    """Family (dinov2, clip, siglip...) of a vision model added by hand, from its config.json."""
+    try:
+        config = json.loads((folder / "config.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    info = {}
+    if isinstance(config.get("model_type"), str):
+        info["family"] = config["model_type"].removesuffix("_vit")  # dinov3_vit -> dinov3
+    archs = config.get("architectures")
+    if isinstance(archs, list) and archs and isinstance(archs[0], str):
+        info["pipeline"] = archs[0]
+    return info
+
+
 def list_local_models(model_type: ModelType, with_sizes: bool = True) -> list[LocalModel]:
     entries = manifest.all_entries()
     found: dict[str, LocalModel] = {}
@@ -104,6 +119,8 @@ def list_local_models(model_type: ModelType, with_sizes: bool = True) -> list[Lo
             meta = entries.get(manifest_key(model_type, item.name)) or {}
             if fmt == "diffusers" and not meta.get("pipeline"):
                 meta = {**meta, **_pipeline_info(item)}
+            elif model_type == "vision" and item.is_dir() and not meta.get("family"):
+                meta = {**_vision_info(item), **meta}
             defaults = meta.get("defaults")
             found[item.name] = LocalModel(
                 name=item.name,

@@ -403,3 +403,45 @@ def build_tiny_lora(sd_path: Path, target: Path, seed: int) -> Path:
         weight_name=target.name,
     )
     return target
+
+
+def build_tiny_clip(path: Path) -> Path:
+    """A tiny random CLIP model (image + text towers) with its processor, for /lab/embed."""
+    import torch
+    from transformers import (
+        CLIPConfig,
+        CLIPImageProcessor,
+        CLIPModel,
+        CLIPProcessor,
+        CLIPTokenizer,
+    )
+
+    _write_tokenizer(path)
+    tokenizer = CLIPTokenizer.from_pretrained(str(path))
+    torch.manual_seed(0)
+    config = CLIPConfig(
+        text_config={
+            "vocab_size": len(tokenizer),
+            "hidden_size": 32,
+            "intermediate_size": 64,
+            "num_hidden_layers": 2,
+            "num_attention_heads": 2,
+            "max_position_embeddings": 77,
+            "bos_token_id": tokenizer.bos_token_id,
+            "eos_token_id": tokenizer.eos_token_id,
+            "pad_token_id": tokenizer.pad_token_id,
+        },
+        vision_config={
+            "hidden_size": 32,
+            "intermediate_size": 64,
+            "num_hidden_layers": 2,
+            "num_attention_heads": 2,
+            "image_size": 32,
+            "patch_size": 8,
+        },
+        projection_dim=16,
+    )
+    CLIPModel(config).save_pretrained(path)
+    images = CLIPImageProcessor(size={"shortest_edge": 32}, crop_size={"height": 32, "width": 32})
+    CLIPProcessor(image_processor=images, tokenizer=tokenizer).save_pretrained(path)
+    return path

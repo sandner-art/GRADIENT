@@ -5,14 +5,17 @@ Structural modulation lanes are part of every generation request (`modulation` f
 so they work from /generate/* as well as from the Lab UI.
 """
 
+import asyncio
 import logging
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, HTTPException, Query
+from PIL import Image
 
 from gradient.ai.diffusion.loading import get_loaded_entry
 from gradient.ai.lab.ablation import token_ablation
 from gradient.ai.lab.attention import attention_maps
 from gradient.ai.lab.concept_attention import concept_attention_maps, concept_support
+from gradient.ai.lab.embed import decode_image, embed
 from gradient.ai.lab.explorer import explore_branches, explore_map, explore_start, explore_tokens
 from gradient.ai.lab.models import (
     AblationRequest,
@@ -21,6 +24,8 @@ from gradient.ai.lab.models import (
     AttentionMapResponse,
     ConceptAttentionRequest,
     ConceptAttentionResponse,
+    EmbedRequest,
+    EmbedResponse,
     ExploreBranchesRequest,
     ExploreBranchesResponse,
     ExploreMapRequest,
@@ -58,6 +63,34 @@ EXPLORE_TOKENS = register_lab_kind(
     "explore_tokens", explore_tokens, ExploreTokensRequest, save=False
 )
 EXPLORE_BRANCHES = register_lab_kind("explore_branches", explore_branches, ExploreBranchesRequest)
+
+
+@router.post(
+    "/lab/embed",
+    response_model=EmbedResponse,
+    summary="Image and text embeddings (DINO, CLIP, SigLIP) for other apps' metrics",
+)
+async def lab_embed(request: EmbedRequest = Body(...)):
+    """L2-normalized embeddings, e.g. for ArtAgents' LoRA test scores (fidelity to the
+    training images, drift, and prompt adherence with a CLIP model). Runs between renders
+    (it shares the GPU lock) and is not saved."""
+    from gradient.gallery.store import output_path
+
+    if not (request.images or request.output_ids or request.texts):
+        raise HTTPException(status_code=422, detail="Send images, output_ids or texts.")
+    try:
+        images = [await asyncio.to_thread(decode_image, b) for b in request.images]
+        for output_id in request.output_ids:
+            path = await output_path(output_id)
+            images.append(await asyncio.to_thread(lambda p=path: Image.open(p).convert("RGB")))
+    except (KeyError, FileNotFoundError) as e:
+        raise HTTPException(status_code=404, detail=str(e).strip("'\"")) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    try:
+        return await run_gpu_task(embed, images, request.texts, request.feature_model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 async def _run_lab(kind: str, request, priority: int = PRIORITY_INTERACTIVE):

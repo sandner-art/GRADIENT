@@ -9,6 +9,8 @@
 
 - **Import test sweep…** (Queue panel): a sweep file exported by ArtAgents' LoRA Lab (when ArtAgents can't reach GRADIENT, or for overnight renders) is checked (model installed, each LoRA found by name or by sha256, a different file refused, a path for missing ones), queued as one group, and when the last image is done GRADIENT writes a results folder (images + `artagents-results.json`) that ArtAgents imports as a normal LoRA Lab run. *Test sweeps* in the Queue panel shows progress, the results path and *Write results now*. API: `/sweeps/preview`, `/sweeps`, `/sweeps/{id}`, `/sweeps/{id}/results`.
 
+- **Embeddings for other apps**: `POST /lab/embed` returns L2-normalized image embeddings (DINO) or image and text embeddings (CLIP, SigLIP) from the `vision` models, for images sent as base64 or gallery ids. ArtAgents scores LoRA tests with it (fidelity, drift, leakage, and CLIP-T with a CLIP model) without installing PyTorch. *CLIP ViT-B/32* is in the model catalog (vision). Vision models copied in by hand now show their family (from `config.json`).
+
 ### API token for other computers
 - `app.api_token` (or `GRADIENT_API_TOKEN`): when set, requests from other computers need `Authorization: Bearer <token>`; a browser opens GRADIENT once with `?token=<token>` (kept in an HttpOnly cookie, removed from the address). Requests from this computer never need it, so the web UI and `gradient stop` work as before; requests through a proxy count as remote.
 - The console warns when GRADIENT listens beyond this computer (`--host 0.0.0.0`) without a token.

@@ -1,7 +1,7 @@
 # src/gradient/ai/lab/models.py
 """Request/response models for the Lab endpoints (/api/v1/lab/*)."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -389,3 +389,37 @@ class ExploreBranchesResponse(BaseModel):
     metric: str
     feature_note: str | None = None
     performance_ms: float
+
+
+class EmbedRequest(BaseModel):
+    """Embeddings for other apps' metrics (POST /lab/embed)."""
+
+    images: list[str] = Field(
+        default_factory=list,
+        max_length=64,
+        description="Base64 PNG, JPEG or WEBP images (data: URLs work)",
+    )
+    output_ids: list[int] = Field(
+        default_factory=list, max_length=256, description="Gallery images, after `images`"
+    )
+    texts: list[Annotated[str, Field(max_length=2000)]] = Field(
+        default_factory=list,
+        max_length=256,
+        description="Texts to embed in the same space (needs a CLIP or SigLIP model)",
+    )
+    feature_model: str | None = Field(
+        default=None,
+        description="A vision model (folder name or Hub id): DINO for images only (default: "
+        "the Lab's DINOv3/DINOv2), CLIP or SigLIP for images and texts",
+    )
+
+
+class EmbedResponse(BaseModel):
+    model: str
+    kind: Literal["dino", "clip"]
+    dim: int
+    image_embeddings: list[list[float]] = Field(
+        ..., description="L2-normalized, in request order (images, then output_ids)"
+    )
+    text_embeddings: list[list[float]] | None = None
+    note: str | None = None
