@@ -39,6 +39,8 @@ export function plainSchedulerName(value?: string | null): string | null {
 export function apiErrorMessage(e: unknown): string {
 	if (typeof e === 'object' && e !== null && 'status' in e) {
 		const { status, detail } = e as { status: number; detail?: unknown };
+		if (status === -1)
+			return 'No connection to GRADIENT: is it still running? (Start it again with run.bat.)';
 		if (typeof detail === 'string') return status > 0 ? `Error ${status}: ${detail}` : detail;
 		if (Array.isArray(detail))
 			return `Invalid request: ${detail

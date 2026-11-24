@@ -13,6 +13,8 @@
 
 ### Startup and version
 - The console says which version is ready, the device (or *CPU only*), and the torch/diffusers versions; the web UI shows the version in its header. The version comes from the checkout, so it's right after `git am`/`git pull`; if the installed packages are older, both say to run the update or install script.
+- **Clean Ctrl+C**: the first Ctrl+C ends the browsers' live connections (no more "waiting for connections to close"), stops a running job at its next step (marked *stopped*, retryable) and starts no new job; GRADIENT then exits with code 0 and no tracebacks. A second Ctrl+C stops at once.
+- **Offline notice in the browser**: open pages say *GRADIENT was stopped* or *No connection to GRADIENT* (after 2 s, so short hiccups don't flash), reconnect by themselves, say *Connected to GRADIENT again*, and offer a **Reload** when it came back as another version. Requests that fail because GRADIENT isn't running say so.
 - Quieter console: the safety checker isn't loaded (and its two warnings are gone), diffusers' empty "float32 modules" notice and loading progress bars are off, the single-file config fetch shows no progress bars, and explorer batches no longer trigger diffusers' image-duplication FutureWarning.
 
 ### Other

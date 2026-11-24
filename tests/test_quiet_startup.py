@@ -1,9 +1,13 @@
 # tests/test_quiet_startup.py
 """Version info and a quiet console: no warnings that say nothing useful."""
 
+import json
 import logging
+import time
 import tomllib
 import warnings
+
+import pytest
 
 from gradient.core.config import PROJECT_ROOT
 
@@ -135,3 +139,53 @@ def test_loading_and_branches_are_quiet(client, tiny_sd):
     ]
     assert not future, [str(w.message) for w in future]
     assert loading.loaded_pipelines  # it did load (the check above is meaningful)
+
+
+# ---- Ctrl+C
+@pytest.fixture
+def stopping():
+    from gradient.core import shutdown
+
+    yield shutdown
+    shutdown.reset()
+
+
+def test_ctrl_c_ends_streams_and_stops_the_running_job(client, tiny_sd, stopping):
+    from tests.test_queue import submit, wait_for
+
+    (long_id,) = submit(client, tiny_sd, num_inference_steps=400)
+    (waiting_id,) = submit(client, tiny_sd)
+    wait_for(client, long_id, statuses=("running",))
+    with client.stream("GET", "/api/v1/queue/events") as stream:
+        lines = stream.iter_lines()
+        first = next(line for line in lines if line.startswith("data: "))
+        assert json.loads(first[6:])["type"] == "snapshot"
+        stopping.request()  # what the first Ctrl+C does
+        rest = [line for line in lines if line.startswith("data: ")]  # ends by itself
+    assert json.loads(rest[-1][6:]) == {"type": "shutdown"}
+    job = wait_for(client, long_id)
+    assert job["status"] == "failed" and "stopped" in job["error"]
+    assert job["progress"]["step"] < 400  # stopped at a step, not run to the end
+    time.sleep(0.3)
+    assert client.get(f"/api/v1/queue/{waiting_id}").json()["status"] == "queued"  # not started
+
+    stopping.reset()  # as after a restart: the queue runs again
+    (next_id,) = submit(client, tiny_sd)
+    assert wait_for(client, waiting_id)["status"] == "completed"
+    assert wait_for(client, next_id)["status"] == "completed"
+
+
+def test_second_ctrl_c_stops_at_once(monkeypatch, stopping):
+    import signal
+
+    import uvicorn
+
+    from gradient import cli
+
+    exits = []
+    monkeypatch.setattr(cli.os, "_exit", exits.append)
+    server = cli._graceful_server(uvicorn.Config("gradient.api.main:app"))
+    server.handle_exit(signal.SIGINT, None)
+    assert stopping.requested() and server.should_exit and exits == []
+    server.handle_exit(signal.SIGINT, None)
+    assert exits == [0]

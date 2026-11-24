@@ -8,7 +8,45 @@ export const queue = $state<{
 	jobs: Record<string, QueueJob>;
 	order: string[];
 	connected: boolean;
-}>({ jobs: {}, order: [], connected: false });
+	/** connected at least once since the page loaded (so "offline" isn't shown while starting) */
+	everConnected: boolean;
+	/** the server said it is stopping (Ctrl+C), rather than the connection just dropping */
+	stopped: boolean;
+	/** when the connection was lost (ms), null while connected */
+	offlineSince: number | null;
+}>({
+	jobs: {},
+	order: [],
+	connected: false,
+	everConnected: false,
+	stopped: false,
+	offlineSince: null
+});
+
+// callback registry, not UI state
+// eslint-disable-next-line svelte/prefer-svelte-reactivity
+const reconnectListeners = new Set<() => void>();
+
+/** Called when the connection comes back after being lost (e.g. GRADIENT was restarted). */
+export function onReconnect(listener: () => void): () => void {
+	reconnectListeners.add(listener);
+	return () => reconnectListeners.delete(listener);
+}
+
+function markOnline() {
+	const wasOffline = queue.everConnected && !queue.connected;
+	queue.connected = true;
+	queue.everConnected = true;
+	queue.stopped = false;
+	queue.offlineSince = null;
+	if (wasOffline) for (const listener of reconnectListeners) listener();
+}
+
+function markOffline(stopped = false) {
+	queue.connected = false;
+	if (stopped) queue.stopped = true;
+	if (queue.everConnected && queue.offlineSince === null) queue.offlineSince = Date.now();
+}
 
 type Listener = (job: QueueJob, previous: QueueJob | undefined) => void;
 // callback registry, not UI state
@@ -30,7 +68,9 @@ function put(job: QueueJob) {
 }
 
 export function applyEvent(event: QueueEvent) {
-	if (event.type === 'snapshot') {
+	if (event.type === 'shutdown') {
+		markOffline(true);
+	} else if (event.type === 'snapshot') {
 		queue.jobs = Object.fromEntries(event.jobs.map((j) => [j.id, j]));
 		queue.order = event.jobs
 			.filter((j) => j.status === 'queued')
@@ -56,18 +96,35 @@ export function connectQueue() {
 			try {
 				const data = await get<{ jobs: QueueJob[] }>('/queue');
 				applyEvent({ type: 'snapshot', jobs: data.jobs });
-				queue.connected = true;
+				markOnline();
 			} catch {
-				queue.connected = false;
+				markOffline();
 			}
 		};
 		refresh();
 		poll = setInterval(refresh, 1500);
 		return;
 	}
+	open();
+}
+
+let retry: ReturnType<typeof setTimeout> | null = null;
+
+function open() {
 	source = new EventSource('/api/v1/queue/events');
-	source.onopen = () => (queue.connected = true);
-	source.onerror = () => (queue.connected = false); // EventSource reconnects by itself
+	source.onopen = markOnline;
+	source.onerror = () => {
+		markOffline();
+		// EventSource retries by itself while the server is unreachable, but gives up after
+		// an HTTP error (e.g. while a proxy or the server is still starting): retry then
+		if (source?.readyState === EventSource.CLOSED && !retry) {
+			source = null;
+			retry = setTimeout(() => {
+				retry = null;
+				open();
+			}, 3000);
+		}
+	};
 	source.onmessage = (message) => {
 		try {
 			applyEvent(JSON.parse(message.data) as QueueEvent);
@@ -80,6 +137,8 @@ export function connectQueue() {
 export function disconnectQueue() {
 	source?.close();
 	source = null;
+	if (retry) clearTimeout(retry);
+	retry = null;
 	if (poll) clearInterval(poll);
 	poll = null;
 }

@@ -3,6 +3,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { onDestroy, onMount } from 'svelte';
 
+	import ConnectionBanner from '#lib/components/ConnectionBanner.svelte';
 	import ContextMenu from '#lib/components/ContextMenu.svelte';
 	import Toasts from '#lib/components/Toasts.svelte';
 	import LLMChat from '#lib/components/LLMChat.svelte';
@@ -22,6 +23,7 @@
 		connectQueue,
 		disconnectQueue,
 		onJobChange,
+		onReconnect,
 		outputIds
 	} from '#lib/stores/queue.svelte.js';
 	import { setupNavigation } from '#lib/stores/nav.svelte.js';
@@ -50,6 +52,8 @@
 	// Device / model availability shown in the header
 	let deviceLabel = $state('');
 	let appVersion = $state('');
+	/** set when GRADIENT came back as another version than this page was loaded from */
+	let updatedTo = $state<string | null>(null);
 	let staleFrom = $state<string | null>(null);
 	let noModels = $state(false);
 
@@ -83,6 +87,17 @@
 			}
 		})();
 
+		// back after a stop or restart: same version → say so; another one → offer a reload
+		const offReconnect = onReconnect(async () => {
+			try {
+				const info = await get<{ version?: string }>('/system/info');
+				if (appVersion && info.version && info.version !== appVersion) updatedTo = info.version;
+				else notify('Connected to GRADIENT again', 'success');
+			} catch {
+				/* the next reconnect will tell */
+			}
+		});
+
 		// tell the user about finished work they're not looking at
 		const off = onJobChange((job, previous) => {
 			if (!previous || previous.status === job.status) return;
@@ -108,6 +123,7 @@
 			}
 		});
 		return () => {
+			offReconnect();
 			off();
 			disconnectQueue();
 		};
@@ -158,6 +174,8 @@
 		<QueuePanel />
 	</div>
 </section>
+
+<ConnectionBanner {updatedTo} pageVersion={appVersion} />
 
 {#if staleFrom}
 	<div

@@ -40,6 +40,11 @@ describe('plainSchedulerName', () => {
 });
 
 describe('apiErrorMessage', () => {
+	it('says when GRADIENT is not reachable', () => {
+		expect(apiErrorMessage({ status: -1, statusText: '', detail: 'Failed to fetch' })).toMatch(
+			/No connection to GRADIENT/
+		);
+	});
 	it('formats FastAPI errors', () => {
 		expect(apiErrorMessage({ status: 400, statusText: '', detail: 'bad model' })).toBe(
 			'Error 400: bad model'

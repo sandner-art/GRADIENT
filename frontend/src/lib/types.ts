@@ -398,7 +398,8 @@ export type QueueEvent =
 	| { type: 'snapshot'; jobs: QueueJob[] }
 	| { type: 'job'; job: QueueJob }
 	| { type: 'removed'; ids: string[] }
-	| { type: 'order'; order: string[] };
+	| { type: 'order'; order: string[] }
+	| { type: 'shutdown' };
 // --- Queue --- ^^^
 
 // --- Gallery (src/gradient/gallery/store.py) --- vvv

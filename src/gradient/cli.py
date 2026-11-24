@@ -15,6 +15,7 @@ gradient models delete diffusers sdxl-turbo
 
 import argparse
 import asyncio
+import os
 import sys
 import threading
 import webbrowser
@@ -50,15 +51,56 @@ def cmd_serve(args: argparse.Namespace) -> int:
     )
     open_browser = bool(args.open or get_setting("app.open_browser", False))
     threading.Thread(target=_announce_when_ready, args=(url, open_browser), daemon=True).start()
-    uvicorn.run(
-        "gradient.api.main:app",
-        host=host,
-        port=port,
-        reload=reload,
-        reload_dirs=[str(PROJECT_ROOT / "src")] if reload else None,
-        log_config=None,
-    )
+    try:
+        if reload:  # the reloader runs the server in a child process
+            uvicorn.run(
+                "gradient.api.main:app",
+                host=host,
+                port=port,
+                reload=True,
+                reload_dirs=[str(PROJECT_ROOT / "src")],
+                log_config=None,
+            )
+        else:
+            config = uvicorn.Config(
+                "gradient.api.main:app",
+                host=host,
+                port=port,
+                log_config=None,
+                timeout_graceful_shutdown=5,  # then still-open requests are closed
+            )
+            _graceful_server(config).run()
+    except KeyboardInterrupt:  # uvicorn re-raises Ctrl+C after a graceful stop
+        pass
+    print("GRADIENT stopped.", flush=True)
     return 0
+
+
+def _graceful_server(config):
+    import signal
+
+    import uvicorn
+
+    from gradient.core import shutdown
+
+    class GracefulServer(uvicorn.Server):
+        """Ctrl+C: end event streams and the running job's work at its next step, then
+        stop; Ctrl+C again: stop at once (no tracebacks)."""
+
+        def handle_exit(self, sig, frame) -> None:
+            if shutdown.requested() and sig == signal.SIGINT:
+                print("\nStopped immediately.", flush=True)
+                os._exit(0)
+            if not shutdown.requested():
+                shutdown.request()
+                print(
+                    "\nStopping GRADIENT (a running job stops at its next step; "
+                    "Ctrl+C again stops immediately) ...",
+                    flush=True,
+                )
+            super().handle_exit(sig, frame)
+
+    return GracefulServer(config)
 
 
 def _announce_when_ready(url: str, open_browser: bool, timeout: float = 600) -> None:

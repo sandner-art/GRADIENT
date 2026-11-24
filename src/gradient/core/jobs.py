@@ -26,6 +26,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import shutdown
+
 logger = logging.getLogger(__name__)
 
 QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED = (
@@ -122,9 +124,10 @@ def current_job() -> Job | None:
 
 
 def check_cancelled() -> None:
-    """Call between steps of long work; raises JobCancelled if the user cancelled the job."""
+    """Call between steps of long work; raises JobCancelled if the user cancelled the job
+    or GRADIENT is stopping."""
     job = _current.get()
-    if job is not None and job.cancel_event.is_set():
+    if job is not None and (job.cancel_event.is_set() or shutdown.requested()):
         raise JobCancelled()
 
 
@@ -358,6 +361,8 @@ class JobQueue:
     async def _loop(self) -> None:
         assert self._wake is not None
         while True:
+            if shutdown.requested():  # stopping: waiting jobs stay queued (marked on restart)
+                return
             if not self.order:
                 self._wake.clear()
                 await self._wake.wait()
@@ -392,7 +397,12 @@ class JobQueue:
                 job.run_uuid = job.result["run_uuid"]
             self._finish(job, COMPLETED)
         except JobCancelled as e:
-            self._finish(job, CANCELLED)
+            if shutdown.requested():
+                self._finish(
+                    job, FAILED, "GRADIENT was stopped during this job (Retry runs it again)"
+                )
+            else:
+                self._finish(job, CANCELLED)
             error = e
         except Exception as e:
             self._finish(job, FAILED, _describe(e))

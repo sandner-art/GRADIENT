@@ -13,6 +13,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from gradient.api.job_kinds import label_for, validate_payload
+from gradient.core import shutdown
 from gradient.core.jobs import job_queue
 
 router = APIRouter()
@@ -79,15 +80,24 @@ async def events(request: Request):
     async def stream():
         try:
             snapshot = {"type": "snapshot", "jobs": job_queue.list()}
-            yield f"data: {json.dumps(snapshot)}\n\n"
+            # browsers reconnect 2 s after the stream ends (GRADIENT stopped or restarted)
+            yield f"retry: 2000\ndata: {json.dumps(snapshot)}\n\n"
+            quiet = 0.0
             while True:
+                if shutdown.requested():  # Ctrl+C: tell the page and end the stream now
+                    yield 'data: {"type": "shutdown"}\n\n'
+                    break
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                    event = await asyncio.wait_for(queue.get(), timeout=0.5)
                 except TimeoutError:
-                    yield ": keep-alive\n\n"
+                    quiet += 0.5
+                    if quiet >= 15:
+                        quiet = 0.0
+                        yield ": keep-alive\n\n"
                     continue
+                quiet = 0.0
                 yield f"data: {json.dumps(event, default=str)}\n\n"
         finally:
             job_queue.unsubscribe(queue)
