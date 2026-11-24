@@ -3,6 +3,7 @@
 
 gradient                         start the app (API + web UI) at http://127.0.0.1:8000
 gradient serve --port 9000 --open
+gradient stop                    stop a running GRADIENT (like Ctrl+C in its window)
 gradient info                    device, versions
 gradient models catalog [--type diffusers]
 gradient models list [--type lora]
@@ -62,6 +63,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 log_config=None,
             )
         else:
+            from gradient.core import shutdown
+
             config = uvicorn.Config(
                 "gradient.api.main:app",
                 host=host,
@@ -69,10 +72,98 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 log_config=None,
                 timeout_graceful_shutdown=5,  # then still-open requests are closed
             )
-            _graceful_server(config).run()
+            server = _graceful_server(config)
+            shutdown.attach(server)
+            console_handler = _install_windows_console_handler()  # noqa: F841 (kept alive)
+            try:
+                server.run()
+            finally:
+                shutdown.detach()
     except KeyboardInterrupt:  # uvicorn re-raises Ctrl+C after a graceful stop
         pass
     print("GRADIENT stopped.", flush=True)
+    return 0
+
+
+#: Windows console events: Ctrl+C, Ctrl+Break, the console window (or terminal) closing
+_CONSOLE_EVENTS = {0: "Ctrl+C", 1: "Ctrl+Break", 2: "the console was closed"}
+
+
+def _on_console_event(event: int) -> bool:
+    """Windows console control handler (runs in its own thread, so it works even while the
+    main thread is busy). The first Ctrl+C stops gracefully, the second at once."""
+    from gradient.core import shutdown
+
+    reason = _CONSOLE_EVENTS.get(event)
+    if reason is None:  # log-off / system shutdown: default handling
+        return False
+    if event == 2:  # Windows ends the process about 5 s after the console closes
+        shutdown.begin(reason)
+        shutdown.wait_stopped(4.0)
+        return True
+    if not shutdown.begin(reason):
+        print("\nStopped immediately.", flush=True)
+        os._exit(0)
+    return True
+
+
+def _install_windows_console_handler():
+    """Handle Ctrl+C ourselves on Windows. Some launchers (terminals, IDEs, .bat chains)
+    start programs with Ctrl+C switched off, which Python's own handler can't undo; here it
+    is switched back on first. Returns the callback (keep a reference) or None."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        routine_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+        routine = routine_type(lambda event: bool(_on_console_event(int(event))))
+        kernel32.SetConsoleCtrlHandler(None, False)  # undo an inherited "ignore Ctrl+C"
+        if not kernel32.SetConsoleCtrlHandler(routine, True):
+            return None
+        return routine
+    except Exception:  # no console (e.g. started without one): signals still work
+        return None
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    """Ask a running GRADIENT on this computer to stop (as the first Ctrl+C would)."""
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+
+    from gradient.core.config import get_setting
+
+    port = int(args.port or get_setting("app.port", 8000))
+    url = f"http://127.0.0.1:{port}"
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    req = urllib.request.Request(f"{url}/api/v1/system/shutdown?by=cli", method="POST")
+    try:
+        with opener.open(req, timeout=10):
+            pass
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.loads(e.read()).get("detail")
+        except Exception:
+            detail = e.reason
+        print(f"GRADIENT at {url} didn't stop: {detail}")
+        return 1
+    except (urllib.error.URLError, OSError):
+        print(f"GRADIENT isn't running at {url}.")
+        return 1
+    print(f"Asked GRADIENT at {url} to stop ...", flush=True)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        try:
+            with opener.open(f"{url}/api/v1/status", timeout=2):
+                time.sleep(0.5)
+        except Exception:
+            print("GRADIENT stopped.")
+            return 0
+    print("It's still finishing its current step; it will stop when that ends.")
     return 0
 
 
@@ -91,13 +182,7 @@ def _graceful_server(config):
             if shutdown.requested() and sig == signal.SIGINT:
                 print("\nStopped immediately.", flush=True)
                 os._exit(0)
-            if not shutdown.requested():
-                shutdown.request()
-                print(
-                    "\nStopping GRADIENT (a running job stops at its next step; "
-                    "Ctrl+C again stops immediately) ...",
-                    flush=True,
-                )
+            shutdown.begin("Ctrl+C" if sig == signal.SIGINT else signal.Signals(sig).name)
             super().handle_exit(sig, frame)
 
     return GracefulServer(config)
@@ -326,6 +411,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     serve.add_argument("--open", action="store_true", help="Open the browser")
     serve.set_defaults(func=cmd_serve)
+
+    stop = sub.add_parser("stop", help="Stop a running GRADIENT on this computer")
+    stop.add_argument("--port", type=int, default=None, help="Its port (default: app.port)")
+    stop.set_defaults(func=cmd_stop)
 
     info = sub.add_parser("info", help="Show device and library versions")
     info.set_defaults(func=cmd_info)

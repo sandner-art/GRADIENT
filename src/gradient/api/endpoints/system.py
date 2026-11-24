@@ -1,12 +1,15 @@
 # src/gradient/api/endpoints/system.py
 
+import asyncio
 import importlib
 import logging
 from importlib.metadata import PackageNotFoundError, version
+from typing import Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from gradient.ai.diffusion import loading
+from gradient.core import shutdown
 from gradient.core.device import device_summary
 from gradient.core.resource_manager import resource_manager
 from gradient.core.scheduling import gpu_queue_depth, progress_tracker, run_gpu_task
@@ -130,6 +133,30 @@ async def get_system_info():
 async def get_runtime_status():
     """Current generation progress and queue depth (cheap; poll while generating)."""
     return {"queue_depth": gpu_queue_depth(), "current": progress_tracker.snapshot()}
+
+
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_local(request: Request) -> bool:
+    return bool(request.client and request.client.host in _LOCAL_HOSTS)
+
+
+@router.post("/system/shutdown", tags=["System Info"])
+async def stop_gradient(request: Request, by: Literal["web", "cli"] = "web"):
+    """Stop GRADIENT gracefully, like the first Ctrl+C (only from this computer)."""
+    if not _is_local(request):
+        raise HTTPException(
+            status_code=403, detail="GRADIENT can only be stopped from this computer"
+        )
+    if not shutdown.can_stop():
+        raise HTTPException(
+            status_code=409,
+            detail="This GRADIENT wasn't started with `gradient serve`; stop it where it runs",
+        )
+    reason = "stopped from the web UI" if by == "web" else "gradient stop"
+    asyncio.get_running_loop().call_later(0.2, shutdown.begin, reason)  # answer first
+    return {"stopping": True}
 
 
 @router.post("/system/unload", tags=["System Info"])

@@ -189,3 +189,59 @@ def test_second_ctrl_c_stops_at_once(monkeypatch, stopping):
     assert stopping.requested() and server.should_exit and exits == []
     server.handle_exit(signal.SIGINT, None)
     assert exits == [0]
+
+
+class _FakeServer:
+    should_exit = False
+
+
+def test_stop_endpoint(client, monkeypatch, stopping):
+    from gradient.api.endpoints import system
+
+    # only from this computer (the test client isn't a loopback address)
+    r = client.post("/api/v1/system/shutdown")
+    assert r.status_code == 403 and "this computer" in r.text
+    monkeypatch.setattr(system, "_is_local", lambda request: True)
+    # a server not started by `gradient serve` can't be stopped from here
+    r = client.post("/api/v1/system/shutdown")
+    assert r.status_code == 409 and "gradient serve" in r.text
+    fake = _FakeServer()
+    stopping.attach(fake)
+    try:
+        r = client.post("/api/v1/system/shutdown")
+        assert r.status_code == 200 and r.json() == {"stopping": True}
+        deadline = time.time() + 5
+        while not fake.should_exit and time.time() < deadline:
+            time.sleep(0.05)
+        assert fake.should_exit and stopping.requested()
+    finally:
+        stopping.detach()
+
+
+def test_windows_console_events(monkeypatch, stopping):
+    from gradient import cli
+
+    exits = []
+    monkeypatch.setattr(cli.os, "_exit", exits.append)
+    fake = _FakeServer()
+    stopping.attach(fake)
+    try:
+        assert cli._on_console_event(5) is False  # log-off: Windows' default handling
+        assert cli._on_console_event(0) is True  # Ctrl+C: graceful
+        assert fake.should_exit and stopping.requested() and exits == []
+        assert cli._on_console_event(0) is True and exits == [0]  # again: at once
+        stopping.detach()  # the server has finished: a console close returns right away
+        started = time.time()
+        assert cli._on_console_event(2) is True and time.time() - started < 1
+    finally:
+        stopping.detach()
+    assert cli._install_windows_console_handler() is None  # not Windows here: nothing to do
+
+
+def test_gradient_stop_without_a_server(capsys):
+    import argparse
+
+    from gradient import cli
+
+    assert cli.cmd_stop(argparse.Namespace(port=1)) == 1
+    assert "isn't running" in capsys.readouterr().out
