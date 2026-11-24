@@ -113,7 +113,12 @@ async def get_schedulers(
 @router.get("/system/info", tags=["System Info"])
 async def get_system_info():
     """Device, library versions and loaded models."""
+    from gradient.core.version import app_version, install_is_stale, installed_version
+
     return {
+        "version": app_version(),
+        "installed_version": installed_version(),
+        "install_is_stale": install_is_stale(),
         "device": device_summary(),
         "versions": {p: _pkg_version(p) for p in _PACKAGES},
         "loaded_pipelines": loading.loaded_summary(),

@@ -18,6 +18,7 @@ import logging
 import threading
 from collections import OrderedDict
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -340,12 +341,15 @@ def _load_base(
         if spec.name == "gguf" or spec.backend == "bitsandbytes":
             quant.quantize_in_place(None, spec)  # raises with the explanation
         cls = getattr(diffusers, source.pipeline_class or "StableDiffusionPipeline")
-        pipe = cls.from_single_file(source.load_path, **load_args)
+        load_args.update(_without_safety_checker(cls))
+        with _quiet_hub():  # it fetches the model's config files (cached after the first time)
+            pipe = cls.from_single_file(source.load_path, **load_args)
         quant.quantize_in_place(pipe, spec)
     else:
         if source.variant:
             load_args["variant"] = source.variant
         load_args.update(quant.load_args(spec, source.load_path, dtype))
+        load_args.update(_without_safety_checker(_pipeline_class(source)))
         pipe = DiffusionPipeline.from_pretrained(source.load_path, **load_args)
 
     if hasattr(pipe, "safety_checker") and getattr(pipe, "safety_checker", None) is not None:
@@ -381,6 +385,57 @@ def _load_base(
         "Loaded %s as %s (family=%s, memory_mode=%s)", model_id, pipeline_class, entry.family, mode
     )
     return entry
+
+
+def _pipeline_class(source):
+    """The diffusers pipeline class of a model folder (manifest, else model_index.json)."""
+    import diffusers
+
+    name = source.pipeline_class
+    if not name:
+        try:
+            index = Path(source.load_path) / "model_index.json"
+            name = json.loads(index.read_text(encoding="utf-8")).get("_class_name")
+        except (OSError, ValueError, TypeError):
+            return None
+    return getattr(diffusers, name, None) if name else None
+
+
+def _without_safety_checker(cls) -> dict:
+    """Skip loading the NSFW safety checker (a research tool; the user is responsible for
+    outputs) and tell the pipeline it isn't required, which also silences its warning."""
+    if cls is None:
+        return {}
+    import inspect
+
+    try:
+        params = inspect.signature(cls.__init__).parameters
+    except (TypeError, ValueError):
+        return {}
+    if "safety_checker" in params and "requires_safety_checker" in params:
+        return {"safety_checker": None, "requires_safety_checker": False}
+    return {}
+
+
+@contextmanager
+def _quiet_hub():
+    """No Hugging Face Hub progress bars while a single-file model fetches its configs."""
+    try:
+        from huggingface_hub.utils import (
+            are_progress_bars_disabled,
+            disable_progress_bars,
+            enable_progress_bars,
+        )
+    except ImportError:
+        yield
+        return
+    was_disabled = are_progress_bars_disabled()
+    disable_progress_bars()
+    try:
+        yield
+    finally:
+        if not was_disabled:
+            enable_progress_bars()
 
 
 def _async_unloader(key: str):

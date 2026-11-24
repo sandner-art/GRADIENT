@@ -49,6 +49,8 @@
 
 	// Device / model availability shown in the header
 	let deviceLabel = $state('');
+	let appVersion = $state('');
+	let staleFrom = $state<string | null>(null);
 	let noModels = $state(false);
 
 	onMount(() => {
@@ -56,10 +58,17 @@
 		(async () => {
 			try {
 				const [info, models] = await Promise.all([
-					get<{ device: Record<string, unknown> }>('/system/info'),
+					get<{
+						device: Record<string, unknown>;
+						version?: string;
+						installed_version?: string | null;
+						install_is_stale?: boolean;
+					}>('/system/info'),
 					get<string[]>('/system/models/diffusion')
 				]);
 				const d = info.device;
+				appVersion = info.version ?? '';
+				staleFrom = info.install_is_stale ? (info.installed_version ?? '?') : null;
 				deviceLabel = [
 					d.name ?? d.device,
 					d.total_vram_gb ? `${d.total_vram_gb} GB VRAM` : null,
@@ -133,7 +142,13 @@
 
 <section class="mb-6 flex flex-wrap items-end justify-between gap-2">
 	<div>
-		<h1 class="text-3xl font-bold">GRADIENT</h1>
+		<h1 class="text-3xl font-bold">
+			GRADIENT
+			{#if appVersion}<span
+					class="align-middle text-sm font-normal text-gray-500 dark:text-gray-400"
+					>v{appVersion}</span
+				>{/if}
+		</h1>
 		<p class="text-lg text-gray-600 dark:text-gray-400">Generative research workbench</p>
 	</div>
 	<div class="flex items-center gap-3">
@@ -143,6 +158,17 @@
 		<QueuePanel />
 	</div>
 </section>
+
+{#if staleFrom}
+	<div
+		class="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+		role="status"
+	>
+		The installed packages are from GRADIENT {staleFrom}, the code is v{appVersion}. Run
+		<code>update.ps1</code> (or <code>./update.sh</code>) or <code>install.ps1</code> so new dependencies
+		and the web UI are up to date.
+	</div>
+{/if}
 
 {#if noModels && ui.tab !== 'models'}
 	<div

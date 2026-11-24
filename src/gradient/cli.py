@@ -42,7 +42,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
     port = int(args.port or get_setting("app.port", 8000))
     reload = args.reload or bool(get_setting("app.reload", False))
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}"
-    print(f"Starting GRADIENT at {url} ... (the first start can take a minute while PyTorch loads)")
+    from gradient.core.version import app_version
+
+    print(
+        f"Starting GRADIENT {app_version()} at {url} ... "
+        "(the first start can take a minute while PyTorch loads)"
+    )
     open_browser = bool(args.open or get_setting("app.open_browser", False))
     threading.Thread(target=_announce_when_ready, args=(url, open_browser), daemon=True).start()
     uvicorn.run(
@@ -71,11 +76,47 @@ def _announce_when_ready(url: str, open_browser: bool, timeout: float = 600) -> 
             time.sleep(1)
     else:
         return
-    print(
-        f"\nGRADIENT is ready: {url}  (API docs: {url}/docs). Press Ctrl+C to stop.\n", flush=True
-    )
+    print(_ready_banner(url, opener), flush=True)
     if open_browser:
         webbrowser.open(url)
+
+
+def _ready_banner(url: str, opener) -> str:
+    """GRADIENT x.y.z is ready … plus the device and the key library versions."""
+    import json
+
+    try:
+        with opener.open(f"{url}/api/v1/system/info", timeout=10) as r:
+            info = json.loads(r.read())
+    except Exception:
+        info = {}
+    device = info.get("device") or {}
+    versions = info.get("versions") or {}
+    if device.get("name"):
+        parts = [device["name"]]
+        if device.get("total_vram_gb"):
+            parts.append(f"{device['total_vram_gb']:g} GB VRAM")
+        if device.get("cuda"):
+            parts.append(f"CUDA {device['cuda']}")
+    elif str(device.get("device", "")).startswith("cpu"):
+        parts = ["CPU only (no CUDA GPU found: renders will be slow)"]
+    else:
+        parts = [str(device.get("device", "device unknown"))]
+    parts += [f"{p} {versions[p]}" for p in ("torch", "diffusers") if versions.get(p)]
+    lines = [
+        "",
+        f"GRADIENT {info.get('version', '')} is ready: {url}  (API docs: {url}/docs)".replace(
+            "GRADIENT  is", "GRADIENT is"
+        ),
+        "  " + " · ".join(parts),
+    ]
+    if info.get("install_is_stale"):
+        lines.append(
+            f"  Note: the installed packages are from {info.get('installed_version')}; run "
+            "update.ps1 (or ./update.sh) or install.ps1 to bring dependencies up to date."
+        )
+    lines += ["  Press Ctrl+C to stop.", ""]
+    return "\n".join(lines)
 
 
 def cmd_info(_: argparse.Namespace) -> int:

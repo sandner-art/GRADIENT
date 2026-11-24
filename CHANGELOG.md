@@ -9,10 +9,16 @@
 - **Branch kinds**: new noise, word swaps (same noise, only the word differs), prompt mixes (embedding average) and LoRA weights.
 - **Paths**: continue from any branch and go back along the path; trajectories are cached and paths replay exactly. Branches are saved as gallery images with their path, and *Explore…* on one continues it.
 - **Where**: the Lab's new **Explorer** tool (formation strip, settling chart with a table view, words, branches); **Explore** mode in the preview panel beside the render forms; **Explore…** in every image's right-click menu.
+- **Branch viewer**: opens after rendering; ← → step through the image and its branches, hold Space to flip to the reference, W wipe, D difference, M region outline, R pins the shown branch as the reference (compare branches with each other), Enter continues, Esc closes.
+
+### Startup and version
+- The console says which version is ready, the device (or *CPU only*), and the torch/diffusers versions; the web UI shows the version in its header. The version comes from the checkout, so it's right after `git am`/`git pull`; if the installed packages are older, both say to run the update or install script.
+- Quieter console: the safety checker isn't loaded (and its two warnings are gone), diffusers' empty "float32 modules" notice and loading progress bars are off, the single-file config fetch shows no progress bars, and explorer batches no longer trigger diffusers' image-duplication FutureWarning.
 
 ### Other
 - Lab results can hold several gallery images (the explorer's branches); data-URL images in reports are stored correctly.
 - Setting `lab.explore_batch` (default 4): branches rendered together.
+- `/system/info` returns `version`, `installed_version` and `install_is_stale`.
 - `install.ps1`/`update.ps1` forward `-WithQuant`.
 
 ### API

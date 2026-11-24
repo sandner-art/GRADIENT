@@ -6,6 +6,7 @@
      `compact` is the version beside the render forms (no map section, fewer options). -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import BranchViewer from './BranchViewer.svelte';
 	import RegionCanvas from './RegionCanvas.svelte';
 	import SettlingChart from './SettlingChart.svelte';
 	import { get, post } from '#lib/apiClient.js';
@@ -45,7 +46,8 @@
 	let loraWeights = $state('');
 	let overlayChoice = $state<'none' | 'free' | 'measured' | 'word'>('none');
 	let overlayWord = $state<string | null>(null);
-	let enlarged = $state<number | null>(null);
+	/** the branch viewer: null = closed, 0 = the explored image, i = branch i */
+	let viewing = $state<number | null>(null);
 	let llms = $state<string[]>([]);
 	let asking = $state<string | null>(null);
 
@@ -208,13 +210,32 @@
 			explore.error = `At most 12 branches at once (${specs.length} chosen).`;
 			return;
 		}
-		enlarged = null;
+		viewing = null;
 		await renderBranches(specs, featureModel);
+		if (explore.branches?.branches.length) viewing = 1; // step through them with ← →
 	}
 
 	async function useAsInput(b: ExploreBranch) {
 		await useAsInitImage(ui.png(b.image_base64), b.parameters);
 	}
+
+	const viewerItems = $derived(
+		explore.branches
+			? [
+					{
+						label: 'This image',
+						src: ui.png(explore.branches.reference_image_base64),
+						change: null
+					},
+					...explore.branches.branches.map((b) => ({
+						label: b.label,
+						src: ui.png(b.image_base64),
+						change: b.change
+					}))
+				]
+			: []
+	);
+	const branchAt = (i: number) => explore.branches?.branches[i - 1];
 
 	const regionText = $derived(explore.mask ? 'in the marked region' : 'whole image');
 	const changeText = (v: number | null) => (v === null ? '' : v.toFixed(3));
@@ -585,52 +606,77 @@
 				{#if explore.branches.feature_note}<p class={ui.help}>
 						{explore.branches.feature_note}
 					</p>{/if}
-				<div
-					class="grid gap-2 {compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'}"
-				>
-					{#each explore.branches.branches as b, i (i)}
-						<div
-							class="rounded border border-gray-200 p-1.5 dark:border-gray-700"
-							class:col-span-full={enlarged === i}
-						>
-							<button
-								type="button"
-								class="block w-full"
-								onclick={() => (enlarged = enlarged === i ? null : i)}
-								title="Click to enlarge"
-							>
-								<img src={ui.png(b.image_base64)} alt={b.label} class="w-full rounded" />
-							</button>
-							<div class="mt-1 flex items-center gap-1 text-xs">
-								<span class="flex-1 truncate font-medium" title={b.label}>{b.label}</span>
-								{#if b.change !== null}
-									<span
-										class="h-1.5 w-10 rounded bg-gray-100 dark:bg-gray-700"
-										title="Change in the region: {changeText(b.change)}"
-									>
+				{#if viewing !== null}
+					<BranchViewer
+						items={viewerItems}
+						bind:index={viewing}
+						mask={explore.mask}
+						onclose={() => (viewing = null)}
+						oncontinue={(i) => {
+							const b = branchAt(i);
+							if (b && !busy) {
+								viewing = null;
+								void continueFrom(b);
+							}
+						}}
+						onuse={(i) => {
+							const b = branchAt(i);
+							if (b) void useAsInput(b);
+						}}
+					/>
+				{:else}
+					<button
+						type="button"
+						class="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+						onclick={() => (viewing = 1)}
+						>Compare in the viewer (← → to step through branches)</button
+					>
+					<div
+						class="grid gap-2 {compact
+							? 'grid-cols-2 sm:grid-cols-4'
+							: 'grid-cols-2 md:grid-cols-3'}"
+					>
+						{#each explore.branches.branches as b, i (i)}
+							<div class="rounded border border-gray-200 p-1.5 dark:border-gray-700">
+								<button
+									type="button"
+									class="block w-full"
+									onclick={() => (viewing = i + 1)}
+									title="Open in the viewer (← → to step through, Space to compare)"
+								>
+									<img src={ui.png(b.image_base64)} alt={b.label} class="w-full rounded" />
+								</button>
+								<div class="mt-1 flex items-center gap-1 text-xs">
+									<span class="flex-1 truncate font-medium" title={b.label}>{b.label}</span>
+									{#if b.change !== null}
 										<span
-											class="block h-1.5 rounded bg-indigo-500"
-											style:width="{Math.round(((b.change ?? 0) / maxChange) * 100)}%"
-										></span>
-									</span>
-								{/if}
+											class="h-1.5 w-10 rounded bg-gray-100 dark:bg-gray-700"
+											title="Change in the region: {changeText(b.change)}"
+										>
+											<span
+												class="block h-1.5 rounded bg-indigo-500"
+												style:width="{Math.round(((b.change ?? 0) / maxChange) * 100)}%"
+											></span>
+										</span>
+									{/if}
+								</div>
+								<div class="mt-1 flex flex-wrap gap-x-2 text-xs">
+									<button
+										type="button"
+										class="text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+										disabled={busy}
+										onclick={() => continueFrom(b)}>Continue from here</button
+									>
+									<button
+										type="button"
+										class="text-indigo-600 hover:underline dark:text-indigo-400"
+										onclick={() => useAsInput(b)}>Use as input</button
+									>
+								</div>
 							</div>
-							<div class="mt-1 flex flex-wrap gap-x-2 text-xs">
-								<button
-									type="button"
-									class="text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
-									disabled={busy}
-									onclick={() => continueFrom(b)}>Continue from here</button
-								>
-								<button
-									type="button"
-									class="text-indigo-600 hover:underline dark:text-indigo-400"
-									onclick={() => useAsInput(b)}>Use as input</button
-								>
-							</div>
-						</div>
-					{/each}
-				</div>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/if}
 	{/if}

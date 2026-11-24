@@ -2,7 +2,6 @@
 
 import logging
 from contextlib import asynccontextmanager
-from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -11,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from gradient.api.job_kinds import load_recent_jobs, persist_job, register_job_kinds
 from gradient.core.config import PROJECT_ROOT, get_setting
 from gradient.core.jobs import job_queue
+from gradient.core.quiet import quiet_libraries
+from gradient.core.version import app_version
 from gradient.database.session import dispose_engine, init_db
 
 from . import websocket as websocket_endpoints
@@ -28,10 +29,7 @@ from .endpoints import visualize as visualize_endpoints
 
 logger = logging.getLogger(__name__)
 
-try:
-    APP_VERSION = version("gradient-workbench")
-except PackageNotFoundError:  # running from a source checkout without install
-    APP_VERSION = "0.9.0"
+APP_VERSION = app_version()
 
 FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 
@@ -39,6 +37,7 @@ FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("GRADIENT API %s starting up", APP_VERSION)
+    quiet_libraries()
     await init_db()
     register_job_kinds()
     job_queue.set_persistence(persist_job)

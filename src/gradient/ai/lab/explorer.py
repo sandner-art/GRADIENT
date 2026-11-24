@@ -455,6 +455,8 @@ def _branch(parent: Trajectory, ops: list[ExploreOp]) -> list[Trajectory]:
     device = pipe._execution_device
     dtype = weight_dtype(denoiser_of(pipe))
     image = _unpacked(pipe, x0_estimate(parent, k), req).to(device, dtype)
+    if len(ops) > 1:  # one input per branch (diffusers deprecates duplicating one image)
+        image = image.expand(len(ops), *image.shape[1:]).contiguous()
     mask = latent_mask(pipe, parent.latents[0], op.mask_base64, req.width, req.height)
     overrides: dict = {"image": image}
     if op.mix_prompt:
