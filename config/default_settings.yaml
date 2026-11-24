@@ -12,6 +12,10 @@ app:
   # `gradient` command gives you the whole app at http://127.0.0.1:8000
   serve_frontend: true
   open_browser: false
+  # Needed by clients on other computers when set (Authorization: Bearer <token>; in a
+  # browser, open GRADIENT once with ?token=<token>). This computer never needs it.
+  # Set one before listening on other addresses (host 0.0.0.0). Env: GRADIENT_API_TOKEN
+  api_token: ""
 
 logging:
   level: "INFO"

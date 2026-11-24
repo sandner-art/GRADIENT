@@ -50,6 +50,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
         f"Starting GRADIENT {app_version()} at {url} ... "
         "(the first start can take a minute while PyTorch loads)"
     )
+    from gradient.api.auth import api_token, is_loopback
+
+    if not is_loopback(host) and not api_token():
+        print(
+            f"WARNING: GRADIENT listens on {host} without an API token: anyone who can reach "
+            "this computer can use it. Set app.api_token (or GRADIENT_API_TOKEN)."
+        )
     open_browser = bool(args.open or get_setting("app.open_browser", False))
     threading.Thread(target=_announce_when_ready, args=(url, open_browser), daemon=True).start()
     from gradient.api.server import GracefulServer, reload_supervisor

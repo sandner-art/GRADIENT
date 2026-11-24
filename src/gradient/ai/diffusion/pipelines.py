@@ -151,6 +151,12 @@ def generate_images(
     )
 
     params["scheduler_id"] = _set_scheduler(pipe, entry, request.scheduler_id)
+    # LoRAs that matched no layer of this model (another model family) are not applied
+    skipped = [
+        lora.name for lora in request.loras or [] if lora.name and lora.name not in entry.adapters
+    ]
+    if skipped:
+        params["loras_skipped"] = skipped
 
     kwargs: dict[str, Any] = {
         "prompt": request.prompt,

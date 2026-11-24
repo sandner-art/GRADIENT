@@ -88,6 +88,7 @@ export const forgetProject = (uuid: string) => del<{ forgotten: string }>(`/proj
 export function tagSourceLabel(source: string): string {
 	if (source === 'manual') return 'yours';
 	if (source === 'xmp') return 'from an XMP sidecar (Kurator, digiKam, Lightroom…)';
+	if (source === 'api') return 'from the app that queued the job (e.g. ArtAgents)';
 	return `from ${source}`;
 }
 
@@ -105,6 +106,7 @@ export function runTypeLabel(runType: string | null | undefined): string {
 		text_to_image: 'Text-to-image',
 		image_to_image: 'Image-to-image',
 		xyz_grid: 'XYZ grid',
+		group: 'Group',
 		lab_taylor: 'Lab · Taylor',
 		lab_attention: 'Lab · attention',
 		lab_concept_attention: 'Lab · ConceptAttention',

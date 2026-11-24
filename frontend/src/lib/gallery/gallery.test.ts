@@ -64,6 +64,7 @@ describe('tagSourceLabel', () => {
 	it('explains where a tag came from', () => {
 		expect(tagSourceLabel('manual')).toBe('yours');
 		expect(tagSourceLabel('xmp')).toContain('Kurator');
+		expect(tagSourceLabel('api')).toContain('ArtAgents');
 		expect(tagSourceLabel('artagents:llava')).toBe('from artagents:llava');
 	});
 });
@@ -71,6 +72,7 @@ describe('tagSourceLabel', () => {
 describe('runTypeLabel', () => {
 	it('names lab runs and falls back to the raw type', () => {
 		expect(runTypeLabel('lab_taylor')).toBe('Lab · Taylor');
+		expect(runTypeLabel('group')).toBe('Group');
 		expect(runTypeLabel('custom')).toBe('custom');
 		expect(runTypeLabel(null)).toBe('Unknown');
 	});

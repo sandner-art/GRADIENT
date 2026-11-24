@@ -96,6 +96,9 @@ def output_view(o: GeneratedOutput, detail: bool = False) -> dict[str, Any]:
             file_path=o.file_path,
             exists=Path(o.file_path).is_file(),
             run_status=o.run.status if o.run else None,
+            # from POST /queue: the group the image was queued in and where the job came from
+            group=(o.output_metadata or {}).get("group"),
+            origin=(o.output_metadata or {}).get("origin"),
         )
     return view
 
@@ -320,6 +323,7 @@ async def list_runs(
             "finished": _iso(r.end_time),
             "model_id": run_model_id(r.base_parameters),
             "prompt": run_prompt(r.base_parameters),
+            "title": (r.base_parameters or {}).get("group") if r.run_type == "group" else None,
             "count": counts.get(r.id, 0),
             "cover_ids": covers.get(r.id, []),
             "error": r.user_notes[7:] if (r.user_notes or "").startswith("Error: ") else None,
@@ -379,7 +383,7 @@ async def facets() -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- edits
-def _clean_tags(tags: list[str]) -> list[str]:
+def clean_tags(tags: list[str]) -> list[str]:
     seen: dict[str, None] = {}
     for t in tags:
         t = " ".join(str(t).split())[:80]
@@ -410,7 +414,7 @@ async def update_output(
         if notes is not None:
             o.notes = notes.strip() or None
         if tags is not None:
-            wanted = _clean_tags(tags)
+            wanted = clean_tags(tags)
             keep = [t for t in o.tags if t.source != "manual" or t.tag in wanted]
             have = {t.tag for t in keep if t.source == "manual"}
             o.tags = keep + [OutputTag(tag=t, source="manual") for t in wanted if t not in have]
@@ -444,11 +448,11 @@ async def bulk(ids: list[int], action: str, value: Any = None) -> dict[str, Any]
                 have = {t.tag for t in o.tags if t.source == "manual"}
                 o.tags.extend(
                     OutputTag(tag=t, source="manual")
-                    for t in _clean_tags(value or [])
+                    for t in clean_tags(value or [])
                     if t not in have
                 )
             elif action == "remove_tags":
-                drop = set(_clean_tags(value or []))
+                drop = set(clean_tags(value or []))
                 o.tags = [t for t in o.tags if t.tag not in drop]
             else:
                 raise ValueError(f"Unknown action '{action}'")

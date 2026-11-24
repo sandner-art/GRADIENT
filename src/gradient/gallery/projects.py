@@ -709,7 +709,7 @@ def _apply_sidecar(
     }
     current = [
         k
-        for k in store._clean_tags(sidecar["keywords"])
+        for k in store.clean_tags(sidecar["keywords"])
         if not _is_generated(k, project_name)
         and not ("/" not in k and k not in seen and k.lower() in levels)
     ]
@@ -755,7 +755,7 @@ async def _apply_caption(
     entry["caption_seen"] = sha
     if as_tags:
         have = {(t.tag, t.source) for t in o.tags}
-        for tag in store._clean_tags(text.replace("\n", ",").split(",")):
+        for tag in store.clean_tags(text.replace("\n", ",").split(",")):
             if len(tag.split()) <= 6 and (tag, source) not in have:
                 o.tags.append(OutputTag(tag=tag, source=source))
                 have.add((tag, source))

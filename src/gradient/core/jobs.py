@@ -73,6 +73,8 @@ class Job:
     error: str | None = None
     result: dict[str, Any] | None = None
     retryable: bool = True
+    #: from POST /queue: group (one gallery run for all its jobs), tags, origin
+    meta: dict[str, Any] = field(default_factory=dict)
     # not part of the public view
     preview: bytes | None = field(default=None, repr=False)  # latest live preview (JPEG)
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
@@ -94,6 +96,9 @@ class Job:
             "result": self.result,
             "position": position,
             "retryable": self.retryable and self.status in (FAILED, CANCELLED),
+            "group": self.meta.get("group"),
+            "tags": list(self.meta.get("tags") or []),
+            "origin": self.meta.get("origin"),
             # the settings (without input images, which can be megabytes)
             "payload": _without_images(self.payload),
             "model_id": (
@@ -252,10 +257,17 @@ class JobQueue:
         label: str = "",
         priority: int = PRIORITY_NORMAL,
         wait: bool = False,
+        meta: dict[str, Any] | None = None,
     ) -> Job:
         if kind not in self.kinds:
             raise ValueError(f"Unknown job kind '{kind}'")
-        job = Job(kind=kind, payload=payload, label=label or kind, priority=priority)
+        job = Job(
+            kind=kind,
+            payload=payload,
+            label=label or kind,
+            priority=priority,
+            meta=dict(meta or {}),
+        )
         if wait:
             job.waiter = asyncio.get_running_loop().create_future()
         self.jobs[job.id] = job
@@ -311,7 +323,7 @@ class JobQueue:
             raise ValueError(
                 "Only failed or cancelled jobs with their full settings can be retried"
             )
-        return await self.submit(job.kind, job.payload, job.label, job.priority)
+        return await self.submit(job.kind, job.payload, job.label, job.priority, meta=job.meta)
 
     async def clear_finished(self) -> int:
         ids = [j.id for j in self.jobs.values() if j.status in FINISHED and j.waiter is None]

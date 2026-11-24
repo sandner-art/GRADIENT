@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.1 (unreleased)
+
+### Working with other apps (ArtAgents LoRA tests)
+- **Job groups**: `POST /queue` takes `group`: text-to-image and image-to-image jobs with the same group save their images into one gallery run (type *Group*, one output folder, the group's name as the title in *Runs*), so a sweep of hundreds of images from another app is one run. Queueing more jobs to the same group later adds to it.
+- **Tags and origin**: `tags` become gallery tags on the job's images (shown as *from the app that queued the job*), and `origin` (app, run, item…, up to 4 KB of JSON) is kept with each image (`origin` and `group` in the image's details). Retried jobs keep all three, and they survive restarts in the queue's history.
+- **LoRAs that don't fit are reported**: a LoRA that matches no layer of the model (one for another model family) used to be skipped with only a console warning, so the image looked like a no-LoRA render. Now the job's result has `loras_skipped`, and the image's parameters record it.
+
+### API token for other computers
+- `app.api_token` (or `GRADIENT_API_TOKEN`): when set, requests from other computers need `Authorization: Bearer <token>`; a browser opens GRADIENT once with `?token=<token>` (kept in an HttpOnly cookie, removed from the address). Requests from this computer never need it, so the web UI and `gradient stop` work as before; requests through a proxy count as remote.
+- The console warns when GRADIENT listens beyond this computer (`--host 0.0.0.0`) without a token.
+
 ## 0.9.0 (2026-11-24)
 
 ### Explorer: travel through the model, region by region

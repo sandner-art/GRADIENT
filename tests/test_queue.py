@@ -225,3 +225,131 @@ def test_preview_projection_matches_vae(tiny_sd):
     )
     # a random tiny VAE is far from linear, so only require clearly better than a flat grey
     assert np.abs(rgb - target).mean() < np.abs(0.5 - target).mean()
+
+
+# --------------------------------------------------------------------------- groups, tags, origin
+def submit_meta(client, model_id, group=None, tags=None, origin=None, **overrides):
+    meta = {
+        k: v for k, v in (("group", group), ("tags", tags), ("origin", origin)) if v is not None
+    }
+    r = client.post(
+        "/api/v1/queue",
+        json={
+            "kind": "text_to_image",
+            "payload": {**BASE, "model_id": model_id, **overrides},
+            **meta,
+        },
+    )
+    assert r.status_code == 202, r.text
+    return r.json()["jobs"]
+
+
+def test_group_tags_and_origin(client, tiny_sd):
+    from gradient.gallery.groups import group_run_uuid
+
+    group = "ArtAgents · LoRA test · 20261124-120000-g"
+    tag = "ArtAgents/LoRA test/g"
+    views = [
+        submit_meta(
+            client,
+            tiny_sd,
+            group=f"  {group} ",
+            tags=[tag, f" {tag}", ""],
+            origin={"app": "ArtAgents", "job_index": i},
+            seed=20 + i,
+        )[0]
+        for i in range(3)
+    ]
+    assert views[0]["group"] == group and views[0]["tags"] == [tag]
+    assert views[1]["origin"] == {"app": "ArtAgents", "job_index": 1}
+    jobs = [wait_for(client, v["id"]) for v in views]
+    assert {j["status"] for j in jobs} == {"completed"}
+    run_uuid = group_run_uuid(group)
+    assert {j["run_uuid"] for j in jobs} == {run_uuid}
+    assert {j["result"]["run_uuid"] for j in jobs} == {run_uuid}
+    assert all("loras_skipped" not in j["result"] for j in jobs)
+
+    runs = client.get("/api/v1/history/runs?run_type=group").json()["items"]
+    run = next(r for r in runs if r["run_uuid"] == run_uuid)
+    assert run["title"] == group and run["count"] == 3 and run["status"] == "completed"
+    assert run["model_id"] == tiny_sd and run["finished"]
+
+    out_id = jobs[2]["result"]["outputs"][0]["id"]
+    detail = client.get(f"/api/v1/history/outputs/{out_id}").json()
+    assert {"tag": tag, "source": "api", "confidence": None} in detail["tags"]
+    assert detail["group"] == group and detail["origin"] == {"app": "ArtAgents", "job_index": 2}
+    assert client.get(f"/api/v1/history/outputs?tag={tag}").json()["total"] >= 3
+
+    # a job without a group keeps its own run; the same group later reuses the run
+    alone = wait_for(client, submit_meta(client, tiny_sd)[0]["id"])
+    assert alone["run_uuid"] != run_uuid and alone["group"] is None and alone["tags"] == []
+    again = wait_for(client, submit_meta(client, tiny_sd, group=group)[0]["id"])
+    assert again["run_uuid"] == run_uuid
+    runs = client.get("/api/v1/history/runs?run_type=group").json()["items"]
+    assert next(r for r in runs if r["run_uuid"] == run_uuid)["count"] == 4
+
+
+def test_group_cancel_and_retry_keep_meta(client, tiny_sd):
+    from gradient.gallery.groups import group_run_uuid
+
+    group = "cancel-me"
+    long_job = submit_meta(client, tiny_sd, group=group, tags=["t1"], num_inference_steps=400)[0]
+    waiting = submit_meta(client, tiny_sd, group=group, tags=["t1"])[0]
+    wait_for(client, long_job["id"], statuses=("running",))
+    client.post(f"/api/v1/queue/{waiting['id']}/cancel")
+    client.post(f"/api/v1/queue/{long_job['id']}/cancel")
+    assert wait_for(client, long_job["id"])["status"] == "cancelled"
+    runs = client.get("/api/v1/history/runs?run_type=group&include_empty=true").json()["items"]
+    run = next(r for r in runs if r["run_uuid"] == group_run_uuid(group))
+    assert run["status"] == "cancelled" and run["count"] == 0
+    retried = client.post(f"/api/v1/queue/{waiting['id']}/retry").json()
+    assert retried["group"] == group and retried["tags"] == ["t1"]
+    assert wait_for(client, retried["id"])["run_uuid"] == group_run_uuid(group)
+    runs = client.get("/api/v1/history/runs?run_type=group").json()["items"]
+    run = next(r for r in runs if r["run_uuid"] == group_run_uuid(group))
+    assert run["status"] == "completed" and run["count"] == 1
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"origin": {"blob": "x" * 5000}},
+        {"tags": [f"t{i}" for i in range(40)]},
+        {"group": "g" * 200},
+    ],
+)
+def test_meta_validation(client, tiny_sd, extra):
+    r = client.post(
+        "/api/v1/queue",
+        json={"kind": "text_to_image", "payload": {**BASE, "model_id": tiny_sd}, **extra},
+    )
+    assert r.status_code == 422
+
+
+def test_meta_survives_restart(client, tiny_sd):
+    import asyncio
+
+    from gradient.api.job_kinds import load_recent_jobs
+
+    view = submit_meta(client, tiny_sd, group="persist", tags=["p"], origin={"app": "x"})[0]
+    wait_for(client, view["id"])
+    jobs = asyncio.run(load_recent_jobs(50))
+    job = next(j for j in jobs if j.id == view["id"])
+    assert job.meta == {"group": "persist", "tags": ["p"], "origin": {"app": "x"}}
+
+
+def test_wrong_family_lora_is_reported(client, tiny_sd, tiny_sd_source, tiny_flux, workspace):
+    from helpers import build_tiny_lora
+
+    lora = build_tiny_lora(tiny_sd_source, workspace / "models" / "lora" / "sd-only.safetensors", 3)
+    ok = submit_meta(client, tiny_sd, num_outputs=1, loras=[{"name": lora.name, "weight": 1.0}])[0]
+    job = wait_for(client, ok["id"])
+    assert job["status"] == "completed" and "loras_skipped" not in job["result"]
+    wrong = submit_meta(
+        client, tiny_flux, guidance_scale=1.0, loras=[{"name": lora.name, "weight": 1.0}]
+    )[0]
+    job = wait_for(client, wrong["id"])
+    assert job["status"] == "completed", job["error"]
+    assert job["result"]["loras_skipped"] == [lora.name]
+    detail = client.get(f"/api/v1/history/outputs/{job['result']['outputs'][0]['id']}").json()
+    assert detail["parameters"]["loras_skipped"] == [lora.name]

@@ -172,6 +172,7 @@ class QueueJob(Base):
     run_uuid = Column(String, nullable=True, index=True)
     error = Column(Text, nullable=True)
     result = Column(JSON, nullable=True)  # summary: run_uuid, output ids, timings
+    meta = Column(JSON, nullable=True)  # group, tags, origin given to POST /queue
 
 
 class ModelPreset(Base):

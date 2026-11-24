@@ -456,6 +456,8 @@ export interface RunItem {
 	finished: string | null;
 	model_id: string | null;
 	prompt: string | null;
+	/** Group runs (jobs queued with the same `group`): the group's name */
+	title?: string | null;
 	count: number;
 	cover_ids: number[];
 	error: string | null;

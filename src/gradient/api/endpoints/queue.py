@@ -10,11 +10,12 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from gradient.api.job_kinds import label_for, validate_payload
 from gradient.core import shutdown
 from gradient.core.jobs import job_queue
+from gradient.gallery.store import clean_tags
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -32,6 +33,44 @@ class JobSubmit(BaseModel):
         "with a random seed every job draws its own.",
     )
     vary_seed: bool = Field(default=True, description="Step a fixed seed by one per job")
+    group: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Jobs with the same group save their images into one gallery run "
+        "(text_to_image and image_to_image)",
+    )
+    tags: list[str] = Field(
+        default_factory=list, max_length=32, description="Gallery tags for the images"
+    )
+    origin: dict[str, Any] | None = Field(
+        default=None,
+        description="Where the job came from (app, run, item...), kept with each image; "
+        "at most 4 KB as JSON",
+    )
+
+    @field_validator("group")
+    @classmethod
+    def _group(cls, value: str | None) -> str | None:
+        return " ".join(value.split()) or None if value else None
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str]) -> list[str]:
+        return clean_tags(value)
+
+    @field_validator("origin")
+    @classmethod
+    def _origin(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and len(json.dumps(value, default=str)) > 4096:
+            raise ValueError("origin is limited to 4 KB of JSON")
+        return value or None
+
+    def meta(self) -> dict[str, Any]:
+        return {
+            k: v
+            for k, v in (("group", self.group), ("tags", self.tags), ("origin", self.origin))
+            if v
+        }
 
 
 class JobMove(BaseModel):
@@ -57,7 +96,10 @@ async def submit(body: JobSubmit = Body(...)):
         if i and body.vary_seed and isinstance(seed, int):
             job_payload["seed"] = (seed + i) % 2**32
         job = await job_queue.submit(
-            body.kind, job_payload, body.label or label_for(body.kind, job_payload)
+            body.kind,
+            job_payload,
+            body.label or label_for(body.kind, job_payload),
+            meta=body.meta(),
         )
         jobs.append(job_queue.view(job))
     return {"jobs": jobs}

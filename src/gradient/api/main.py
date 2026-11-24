@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from gradient.api.auth import TokenMiddleware
 from gradient.api.job_kinds import load_recent_jobs, persist_job, register_job_kinds
 from gradient.core.config import PROJECT_ROOT, get_setting
 from gradient.core.jobs import job_queue
@@ -67,6 +68,7 @@ app = FastAPI(
     version=APP_VERSION,
     lifespan=lifespan,
 )
+app.add_middleware(TokenMiddleware)  # app.api_token: required from other computers when set
 
 app.include_router(status_endpoints.router, prefix="/api/v1", tags=["Status"])
 app.include_router(generate_endpoints.router, prefix="/api/v1/generate", tags=["Generation"])

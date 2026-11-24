@@ -692,8 +692,8 @@
 							<span class="text-gray-500">{fmtDate(run.started)}</span>
 							<span class="text-gray-500">{run.count} image{run.count === 1 ? '' : 's'}</span>
 						</div>
-						<p class="mt-1 truncate text-sm font-medium" title={run.prompt ?? ''}>
-							{run.prompt ?? '—'}
+						<p class="mt-1 truncate text-sm font-medium" title={run.title ?? run.prompt ?? ''}>
+							{run.title ?? run.prompt ?? '—'}
 						</p>
 						<p class="truncate text-xs text-gray-500">{run.model_id ?? ''}</p>
 						{#if run.error}<p class="mt-1 truncate text-xs text-red-600" title={run.error}>

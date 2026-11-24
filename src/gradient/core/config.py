@@ -83,6 +83,8 @@ def load_settings() -> None:
             logger.warning(f"Invalid GRADIENT_APP_PORT: {port!r} (must be an integer)")
     if (reload_flag := _env_bool("GRADIENT_APP_RELOAD")) is not None:
         app["reload"] = reload_flag
+    if token := os.getenv("GRADIENT_API_TOKEN"):
+        app["api_token"] = token
 
     perf = merged.setdefault("performance", {})
     if mode := os.getenv("GRADIENT_MEMORY_MODE"):
