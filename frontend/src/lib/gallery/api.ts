@@ -94,6 +94,9 @@ export function tagSourceLabel(source: string): string {
 export const thumbUrl = (id: number, size = 256) =>
 	`/api/v1/history/outputs/${id}/thumb?size=${size}`;
 export const imageUrl = (id: number) => `/api/v1/history/outputs/${id}/image`;
+/** The live preview of a running job; `version` (progress.preview) busts the cache. */
+export const previewUrl = (jobId: string, version: number) =>
+	`/api/v1/queue/${jobId}/preview?v=${version}`;
 export const downloadUrl = (id: number) => `/api/v1/history/outputs/${id}/image?download=true`;
 
 /** Human labels for run types. */

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.0 (2026-11-24)
+
+### Rendering
+- **Preview panel** beside the Text-to-Image and Image-to-Image forms (below them on narrow screens): **Live** shows the running render step by step and then the result large, **Compare** wipes between two results (click a thumbnail for A, Shift+click for B), **Batch** shows every image of the newest job. Thumbnails: click to show, double-click for the viewer, `[` / `]` to step.
+- **Live previews**: each step's latents become an estimate of the finished image (from two consecutive steps of Euler-type samplers, k-diffusion and flow matching alike), mapped to RGB with a linear projection fitted once per model by encoding a colour chart with its own VAE, so SD 1.5, SDXL, SD3, FLUX.1 and custom VAEs need no hand-made constants. Published at most every 0.25 s plus the last step; `GET /queue/{id}/preview`; setting `performance.live_preview`.
+- **Send to Lab** from the render forms, the preview panel, the viewer and right-click menus.
+
+### Desktop-style interaction
+- **Right-click menus** for gallery tiles (and selections), thumbnails, the large preview, the viewer image and queue jobs: open, use settings (with or without the seed), use as input, send to Lab, rating, favourite, copy prompt/seed, download, show the run, export to a project, delete (two clicks); queue jobs: run next, retry, stop/cancel, use settings.
+- **Back button**: the mouse's back button, Alt+Left and the browser's Back/Forward move through the app's own history: closing the viewer or the queue drawer, previous tab, previous gallery view. The tab is in the address (`#gallery`), so a reload keeps it.
+
+### Fixes
+- **Taylor preview with custom models**: "expected mat1 and mat2 to have the same dtype (float vs Half)". The JVP sampler now keeps every UNet input in the UNet's weight dtype (a float32 text encoder next to an fp16 UNet caused it), decodes in the VAE's actual weight dtype, and doesn't try to upcast an offloaded VAE. If the exact JVP still fails, `auto` falls back to finite differences and says why (`note`); the log has the traceback.
+- The Lab's DINOv3 fallback message explains how to get access (request it on Hugging Face, then download it in the Models tab with a token).
+
+### API
+- `GET /queue/{id}/preview`; `progress.preview` / `progress.preview_step`; jobs include their `payload` (input images left out).
+- Taylor responses include `note`.
+
+### Tests
+- Mixed-dtype JVP (fails with the old sampler), the Taylor fallback, live preview plumbing, the denoised estimate, the fitted projection; frontend tests for navigation history, Send to Lab and the job menu.
+
 ## 0.6.0 (2026-11-23)
 
 ### Project folders (Kurator, ArtAgents, digiKam)

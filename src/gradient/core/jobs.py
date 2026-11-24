@@ -72,6 +72,7 @@ class Job:
     result: dict[str, Any] | None = None
     retryable: bool = True
     # not part of the public view
+    preview: bytes | None = field(default=None, repr=False)  # latest live preview (JPEG)
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
     waiter: asyncio.Future | None = field(default=None, repr=False)
 
@@ -91,12 +92,26 @@ class Job:
             "result": self.result,
             "position": position,
             "retryable": self.retryable and self.status in (FAILED, CANCELLED),
+            # the settings (without input images, which can be megabytes)
+            "payload": _without_images(self.payload),
             "model_id": (
                 self.payload.get("model_id")
                 or self.payload.get("base_request", {}).get("model_id")
                 or self.payload.get("base_parameters", {}).get("model_id")
             ),
         }
+
+
+def _without_images(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            k: _without_images(v)
+            for k, v in value.items()
+            if not (k.endswith("image_base64") and isinstance(v, str))
+        }
+    if isinstance(value, list):
+        return [_without_images(v) for v in value]
+    return value
 
 
 _current: contextvars.ContextVar[Job | None] = contextvars.ContextVar("gradient_job", default=None)
@@ -111,6 +126,18 @@ def check_cancelled() -> None:
     job = _current.get()
     if job is not None and job.cancel_event.is_set():
         raise JobCancelled()
+
+
+def report_preview(jpeg: bytes, step: int) -> None:
+    """Publish a live preview of the running job (fetched from /queue/{id}/preview)."""
+    job = _current.get()
+    if job is not None:
+        job.preview = jpeg
+        job.progress = {
+            **job.progress,
+            "preview": int(job.progress.get("preview", 0)) + 1,
+            "preview_step": step,
+        }
 
 
 def report_progress(**values: Any) -> None:

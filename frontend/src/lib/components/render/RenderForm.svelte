@@ -6,10 +6,9 @@
 	import type { Writable } from 'svelte/store';
 	import { get } from '#lib/apiClient.js';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
-	import RecentRenders from './RecentRenders.svelte';
 	import * as ui from '#lib/lab/ui.js';
 	import { rememberFormJobs, submitJob } from '#lib/stores/queue.svelte.js';
-	import { notify } from '#lib/stores/ui.svelte.js';
+	import { notify, sendToLab } from '#lib/stores/ui.svelte.js';
 	import type {
 		ImageToImageRequest,
 		LoRAParameter,
@@ -211,6 +210,17 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	/** The form's settings into the Lab (first prompt line; the Lab renders one image). */
+	function toLab() {
+		const s = $store;
+		sendToLab({
+			...s,
+			prompt: (prompts[0] ?? s.prompt ?? '').trim(),
+			loras: loras.filter((l) => l.name),
+			custom_sigmas: parseSigmas(sigmasText)
+		});
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -612,14 +622,21 @@
 				</div>
 			</details>
 
-			<button type="submit" class="{ui.primaryButton} w-full py-3 text-base" disabled={busy}>
-				Queue {imagesToQueue} image{imagesToQueue > 1 ? 's' : ''}{jobsToQueue > 1
-					? ` (${jobsToQueue} jobs)`
-					: ''}
-			</button>
+			<div class="flex gap-2">
+				<button type="submit" class="{ui.primaryButton} flex-1 py-3 text-base" disabled={busy}>
+					Queue {imagesToQueue} image{imagesToQueue > 1 ? 's' : ''}{jobsToQueue > 1
+						? ` (${jobsToQueue} jobs)`
+						: ''}
+				</button>
+				<button
+					type="button"
+					class={ui.secondaryButton}
+					title="Open these settings in the Lab (Taylor preview, attention maps, ablation …)"
+					disabled={!$store.model_id}
+					onclick={toLab}>Send to Lab</button
+				>
+			</div>
 			{#if error}<div class={ui.errorBox} role="alert">{error}</div>{/if}
 		</div>
 	</form>
-
-	<RecentRenders form={mode} />
 </div>

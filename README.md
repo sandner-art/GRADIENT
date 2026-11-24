@@ -20,12 +20,14 @@ While powerful, existing generative AI tools often present fragmented workflows,
 3.  **Reproducible Research:** Integrating tools for systematic evaluation, logging, and analysis.
 4.  **Structural Creativity:** Offering capabilities to manipulate the generative process itself for unique artistic outcomes.
 
-## What works today (v0.6.0)
+## What works today (v0.7.0)
 
 *   **Any diffusers model family:** SD 1.5, SDXL, SD 3.5, FLUX.1, FLUX.2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2 and more (diffusers folders, Hub repos, and SD/SDXL/SD3/FLUX single-file checkpoints).
 *   **Built-in Model Manager:** a verified catalog of base models, LoRAs, VAEs, ControlNets and GGUF LLMs; one-click downloads from Hugging Face, any repo/file link, or direct URLs (e.g. Civitai), with progress, cancel and resume. Also on the command line.
 *   **Text-to-image, image-to-image, XYZ grids** with presets, LoRAs, embeddings, scheduler choice, **custom sigma schedules** and **scheduled CFG** (`linear(9,3)`, keyframes `9@0,4@20`).
 *   **Everyday renderer:** queue as many images as you like (batch count, one job per prompt line), keep working while they render, and reorder, cancel or retry jobs in the **Queue** panel. **LoRAs stay loaded**, so changing their weights or switching back to one you used costs nothing. Works the same for SD 1.5 and the newest models.
+*   **Live preview beside the form:** watch a render develop step by step (a denoised estimate, cheap enough for every step), then see the result large; compare two results with a wipe slider, or see a whole batch. **Send to Lab** takes the form's settings into the Lab.
+*   **Works like a desktop app:** right-click images, queue jobs and the viewer for their actions (use settings, use as input, send to Lab, rate, favourite, copy, export, delete), and the mouse's back button (or Alt+Left) goes back inside GRADIENT: it closes the viewer or the queue, and returns to the previous tab or gallery view.
 *   **Gallery:** every image GRADIENT makes (renders, grid cells, Lab results), with search, filters by model, type, rating and tag, favourites, star ratings, notes, bulk edits, a full-screen viewer with keyboard shortcuts, and a per-run view. *Use settings* sends an image's exact settings (LoRAs included) back to the form.
 *   **Project folders for other tools:** export a selection or a filtered view into a folder with XMP sidecars (tags, rating, prompt) that [Kurator](https://github.com/eigensoundlab/kurator), digiKam, Lightroom and darktable read, and that [ArtAgents](https://github.com/sandner-art/ArtAgents) can caption. **Sync** brings their tags, ratings and captions back into the gallery, each marked with where it came from.
 *   **Reproducibility:** every image is generated with its own seeded generator, saved with full parameters in PNG metadata and logged to a local SQLite experiment database. PNGs also carry an A1111-style `parameters` text, so other tools (image managers, taggers, other UIs) can read the prompt, seed and LoRAs.

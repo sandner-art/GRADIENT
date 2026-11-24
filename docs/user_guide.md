@@ -6,6 +6,18 @@ Installation and model downloads are covered in the [README](../README.md). This
 
 **Queueing.** *Text-to-Image* and *Image-to-Image* don't wait for the render: **Queue** (or Ctrl+Enter in the prompt) adds jobs and you can change settings and queue more straight away. *Batch count* queues the same settings several times (with a fixed seed, each job uses the next seed; with an empty seed each gets a random one). Tick *One job per line* to render a list of prompts, one job per line. *Images per job* makes several images in one pass, which is faster on a big GPU but needs more memory.
 
+**Preview panel.** On wide screens the render tabs show a large panel beside the form (below it on narrow ones):
+- **Live** follows the newest job: while it renders you see the image develop (an estimate of the finished image at each step, cheap enough for every step; turn it off with `performance.live_preview: false`), then the result. Click a thumbnail in the strip to show it instead (*Follow newest* goes back), double-click for the viewer, and `[` / `]` step through the results.
+- **Compare** shows two results with a wipe slider: click a thumbnail for A, Shift+click for B.
+- **Batch** shows every image of the newest finished job.
+- **Fit** switches between fitting the panel and full size.
+
+**Send to Lab** (next to *Queue*, in the preview panel, the viewer and right-click menus) copies the settings into the Lab's shared settings and opens the Lab. The Lab uses one LoRA and a constant guidance value, so extra LoRAs, scheduled guidance and custom sigmas are left out (the notice says so).
+
+**Right-click menus.** Right-click an image (gallery tile, thumbnail, the large preview, the viewer) for *Open*, *Use settings* (with or without its seed), *Use as input*, *Send to Lab*, a star rating, favourite, *Copy prompt* / *Copy seed*, *Download*, *Show its run*, *Export to a project…* and *Delete* (click twice). Right-click a selection in the gallery for the same actions on all selected images, and a queue job for *Run next*, *Retry*, *Stop*/*Cancel*, *Use settings* and *Send to Lab*. Esc or a click elsewhere closes the menu.
+
+**Back button.** The mouse's back button, Alt+Left and the browser's Back go back inside GRADIENT: they close the image viewer or the queue drawer and return to the previous tab or gallery view (Forward works too). The tab is part of the address (`#gallery`), so reloading keeps it.
+
 **The Queue panel** (header button; the dot is green while connected, a spinner and a thin bar show the running job) lists the running job with **Stop**, the waiting jobs (⤒ run next, ▲/▼ move, ✕ remove) and finished jobs (**Gallery** opens their images, **Retry** for failed or stopped ones). Lab tools and XYZ grids also go through the queue, and Lab requests run before waiting renders. Finished renders show as tiles under the form; when you're on another tab, a notice with **View** pops up.
 
 **Gallery.** Every image GRADIENT saves is here: renders, grid cells and Lab results. Search prompts and notes, filter by model, type, rating, tag or favourites, sort by date or rating, and change the tile size. Hover a tile to favourite or rate it. Click a tile to open the viewer; with the checkbox, Ctrl+click or Shift+click you select several, then rate, favourite, tag, view or delete them together. *Runs* lists the renders, grids and Lab runs with their status; *Open* shows a run's images.
@@ -116,6 +128,14 @@ Notes:
 - Prompt lanes need embeddings of equal length. That is always true for CLIP/T5-padded families (SD 1.5, SDXL, SD 3.5, FLUX.1); for models with variable-length text encoders, keep the prompts a similar length. A blend that is active on the very first step takes effect from step 2 (the image metadata notes this).
 - The image metadata records which lane types were applied (`modulation_applied`) and how many layers each pattern matched (`modulation_layers`).
 
+### Gated feature models (DINOv3)
+
+Token ablation measures changes with DINOv3 ViT-S/16 when it is available, and falls back to the ungated DINOv2 small (and says so). DINOv3 is gated by Meta. To use it:
+1. Sign in on Hugging Face, open [facebook/dinov3-vits16-pretrain-lvd1689m](https://huggingface.co/facebook/dinov3-vits16-pretrain-lvd1689m) and submit the access form (Meta reviews requests, so approval can take a while or be declined).
+2. Create a *read* token at huggingface.co → Settings → Access Tokens.
+3. Give GRADIENT the token: run `hf auth login` in GRADIENT's environment, or set `HF_TOKEN` before starting it, or paste it in the Models tab for the session.
+4. Download **DINOv3 ViT-S/16** in the Models tab (Lab measurements use the local copy).
+
 ### Reproducibility
 Every image is saved under `experiments/<run id>/` with its full parameters in the PNG text chunk `grad_parameters` (including the resolved seed, scheduler, pipeline class, dtype and memory mode), and logged to `data/database/gradient_data.db`. Databases from earlier versions are upgraded automatically on start (new columns are added and filled from the stored parameters). Image *i* of a batch uses seed `seed + i` and regenerates identically on its own.
 
@@ -128,6 +148,7 @@ Computes the derivative of the whole image with respect to the guidance scale, �
 
 - **Exact JVP** (SD 1.x/SDXL): one forward-mode autodiff pass through every sampling step, the text-conditioned UNet and the VAE. It costs about as much as 2–3 normal renders and needs CFG above 1. Attention runs in plain math mode during this pass, so it uses more VRAM than a normal render.
 - **Finite differences** (any family): renders at w − δ, w and w + δ (δ = 0.5 by default).
+- **Auto** uses the exact JVP where it can. If the JVP fails for a model (some custom checkpoints, offloading setups), it uses finite differences instead and says why under the result; the server log has the details.
 - **Render exact at this CFG** renders the real image and reports how much of the change the prediction captured. The prediction is first-order: good for small Δ, it drifts once the composition starts to change.
 - **Sensitivity map** shows |∂image/∂w| per pixel: where the guidance scale matters.
 

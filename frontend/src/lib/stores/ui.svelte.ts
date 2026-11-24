@@ -3,10 +3,26 @@
 // "use these settings" from the gallery into the render forms.
 
 import type { GalleryFilter, ImageToImageRequest, Text2ImageRequest } from '#lib/types.js';
+import { lab } from '#lib/lab/labState.svelte.js';
 import { i2iFormStore } from '#lib/stores/i2iFormStore.js';
 import { t2iFormStore } from '#lib/stores/t2iFormStore.js';
 
 export type Tab = 't2i' | 'i2i' | 'grid' | 'gallery' | 'lab' | 'chat' | 'models';
+
+export type GalleryView = 'images' | 'runs' | 'projects';
+
+/** One entry of a right-click menu. */
+export type MenuItem =
+	| {
+			label: string;
+			run: () => unknown;
+			danger?: boolean;
+			disabled?: boolean;
+			/** keep the menu open after running (e.g. a two-step confirmation) */
+			keepOpen?: boolean;
+	  }
+	| { separator: true }
+	| { rating: number | null; rate: (stars: number) => unknown };
 
 export interface Toast {
 	id: number;
@@ -20,6 +36,9 @@ export const ui = $state<{
 	queueOpen: boolean;
 	/** image ids the viewer pages through, and the current position */
 	viewer: { ids: number[]; index: number } | null;
+	galleryView: GalleryView;
+	/** the open right-click menu */
+	menu: { x: number; y: number; title?: string; items: MenuItem[] } | null;
 	galleryFilter: GalleryFilter;
 	/** bumped to make the gallery reload (e.g. after deletions elsewhere) */
 	galleryVersion: number;
@@ -28,6 +47,8 @@ export const ui = $state<{
 	tab: 't2i',
 	queueOpen: false,
 	viewer: null,
+	galleryView: 'images',
+	menu: null,
 	galleryFilter: { sort: 'newest' },
 	galleryVersion: 0,
 	toasts: []
@@ -49,7 +70,19 @@ export function closeViewer() {
 
 export function openGallery(filter: GalleryFilter = {}) {
 	ui.galleryFilter = { sort: 'newest', ...filter };
+	ui.galleryView = 'images';
 	goTo('gallery');
+}
+
+/** Open a right-click menu at the mouse position (replaces the browser's menu). */
+export function openMenu(e: MouseEvent, items: MenuItem[], title?: string) {
+	e.preventDefault();
+	e.stopPropagation();
+	ui.menu = { x: e.clientX, y: e.clientY, items, title };
+}
+
+export function closeMenu() {
+	ui.menu = null;
 }
 
 let toastId = 0;
@@ -101,6 +134,35 @@ export function useSettings(params: Record<string, unknown>, keepSeed: boolean) 
 	t2iFormStore.update((s) => ({ ...s, ...settings }));
 	goTo('t2i');
 	notify(keepSeed ? 'Settings and seed loaded' : 'Settings loaded with a random seed', 'success');
+}
+
+/** Copy generation settings into the Lab's shared settings and open the Lab. */
+export function sendToLab(params: Record<string, unknown>) {
+	const p = params as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+	const notes: string[] = [];
+	const loras = (p.loras ?? []) as { name: string; weight?: number | null }[];
+	if (loras.length > 1) notes.push(`the Lab uses one LoRA (kept ${loras[0].name})`);
+	if (p.guidance_scale !== undefined && typeof p.guidance_scale !== 'number')
+		notes.push('scheduled guidance became a constant');
+	if (p.custom_sigmas?.length) notes.push('custom sigmas are not used in the Lab');
+	const n = (v: unknown, fallback: number) =>
+		v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? fallback : Number(v);
+	Object.assign(lab.base, {
+		model_id: p.model_id || lab.base.model_id,
+		prompt: p.prompt ?? lab.base.prompt,
+		negative_prompt: p.negative_prompt ?? '',
+		width: n(p.width, lab.base.width),
+		height: n(p.height, lab.base.height),
+		num_inference_steps: n(p.num_inference_steps, lab.base.num_inference_steps),
+		guidance_scale:
+			typeof p.guidance_scale === 'number' ? p.guidance_scale : lab.base.guidance_scale,
+		seed: p.seed === null || p.seed === undefined || p.seed === '' ? null : Number(p.seed),
+		scheduler_id: p.scheduler_id || null,
+		lora: loras[0]?.name ?? null,
+		lora_weight: loras[0]?.weight ?? 1
+	});
+	goTo('lab');
+	notify(`Settings loaded into the Lab${notes.length ? ` (${notes.join('; ')})` : ''}`, 'success');
 }
 
 export async function useAsInitImage(imageUrl: string, params: Record<string, unknown>) {

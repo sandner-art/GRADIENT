@@ -9,7 +9,7 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from gradient.api.job_kinds import label_for, validate_payload
@@ -105,6 +105,23 @@ async def get_job(job_id: str):
         return job_queue.view(job_queue.get(job_id))
     except KeyError as e:
         raise _not_found(e) from e
+
+
+@router.get(
+    "/queue/{job_id}/preview",
+    summary="Latest live preview of a job (JPEG); progress.preview counts updates",
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "No preview yet"}},
+)
+async def job_preview(job_id: str):
+    try:
+        job = job_queue.get(job_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e).strip("'\"")) from e
+    if not job.preview:
+        raise HTTPException(status_code=404, detail="No preview for this job")
+    return Response(
+        content=job.preview, media_type="image/jpeg", headers={"Cache-Control": "no-store"}
+    )
 
 
 @router.post("/queue/{job_id}/cancel", summary="Cancel a waiting job or stop a running one")

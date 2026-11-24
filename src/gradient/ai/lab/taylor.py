@@ -8,6 +8,7 @@ The tangent ∂image/∂w comes from an exact forward-mode JVP through the whole
 then previews any Δ instantly by adding Δ·tangent to the base image.
 """
 
+import logging
 import time
 
 import numpy as np
@@ -20,6 +21,8 @@ from gradient.ai.diffusion.pipelines import _set_scheduler, generate_images, res
 from . import unet_sampler
 from .imaging import colorize, pil_to_array, to_b64
 from .models import TaylorRequest, TaylorResponse
+
+logger = logging.getLogger(__name__)
 
 
 def _encode_tangent(tangent: np.ndarray) -> tuple[Image.Image, float]:
@@ -50,9 +53,30 @@ def taylor_preview(request: TaylorRequest) -> TaylorResponse:
     if method == "jvp" and w <= 1.0:
         raise ValueError("JVP needs classifier-free guidance (guidance_scale > 1)")
 
+    note = None
     if method == "jvp":
         _set_scheduler(pipe, entry, base.scheduler_id)
-        image_t, tangent_t = unet_sampler.guidance_jvp(pipe, base, base.seed)
+        try:
+            image_t, tangent_t = unet_sampler.guidance_jvp(pipe, base, base.seed)
+        except RuntimeError as e:
+            if request.method != "auto":
+                raise RuntimeError(
+                    f"Exact JVP failed for {entry.model_id} ({entry.dtype}, memory mode "
+                    f"{entry.memory_mode}): {e}. Try 'finite_difference'."
+                ) from e
+            # keep 'auto' useful: say why, log the details, measure with finite differences
+            logger.warning(
+                "JVP failed for %s (%s, %s); falling back to finite differences",
+                entry.model_id,
+                entry.dtype,
+                entry.memory_mode,
+                exc_info=True,
+            )
+            note = f"Exact JVP failed ({str(e)[:160]}); used finite differences instead."
+            method = "finite_difference"
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    if method == "jvp":
         image = image_t.numpy()
         tangent = tangent_t.numpy()
         base_img = Image.fromarray((image * 255).round().astype(np.uint8), "RGB")
@@ -79,4 +103,5 @@ def taylor_preview(request: TaylorRequest) -> TaylorResponse:
         magnitude_heatmap_base64=to_b64(colorize(magnitude)),
         mean_abs_tangent=float(np.abs(tangent).mean()),
         performance_ms=(time.time() - start) * 1000,
+        note=note,
     )

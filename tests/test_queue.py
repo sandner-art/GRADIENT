@@ -6,6 +6,7 @@ import json
 import time
 
 import pytest
+import torch
 from PIL import Image
 
 BASE = {
@@ -177,3 +178,50 @@ def test_lab_results_are_saved_as_runs(client, tiny_sd, workspace):
 def test_move_validation(client, bad):
     assert client.post("/api/v1/queue/nope/move", json=bad).status_code == 422
     assert client.post("/api/v1/queue/nope/cancel").status_code == 404
+
+
+def test_live_preview(client, tiny_sd):
+    from gradient.ai.diffusion.preview import estimate_x0
+
+    (job_id,) = submit(client, tiny_sd)
+    job = wait_for(client, job_id)
+    assert job["status"] == "completed"
+    # the last step is always published
+    assert job["progress"]["preview"] >= 1 and job["progress"]["preview_step"] == 4
+    r = client.get(f"/api/v1/queue/{job_id}/preview")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert Image.open(io.BytesIO(r.content)).size[0] > 0
+    assert client.get("/api/v1/queue/nope/preview").status_code == 404
+
+    # Euler step: x = x0 + sigma * eps; two consecutive latents give x0 back exactly
+    x0, eps = torch.randn(1, 4, 8, 8), torch.randn(1, 4, 8, 8)
+    x_prev, x_now = x0 + 5.0 * eps, x0 + 2.0 * eps
+    assert torch.allclose(estimate_x0(x_now, x_prev, 2.0, 5.0), x0, atol=1e-5)
+    assert torch.equal(estimate_x0(x_now, x_prev, 2.0, 2.0), x_now)
+
+
+def test_preview_projection_matches_vae(tiny_sd):
+    """The fitted latent→RGB map reproduces what the VAE decodes (roughly, it's linear)."""
+    import numpy as np
+
+    from gradient.ai.diffusion.loading import get_pipeline
+    from gradient.ai.diffusion.preview import _chart, _normalize, fit_projection, to_rgb
+
+    pipe, _ = get_pipeline(tiny_sd)
+    proj = fit_projection(pipe)
+    assert proj is not None and proj[0].shape == (pipe.vae.config.latent_channels, 3)
+    chart = _chart(256)
+    x = torch.from_numpy(chart).permute(2, 0, 1)[None] * 2 - 1
+    with torch.no_grad():
+        z = _normalize(pipe.vae.encode(x).latent_dist.mean, pipe.vae)[0]
+    rgb = to_rgb(z, proj).astype(np.float32) / 255
+    h, w = rgb.shape[:2]
+    target = (
+        torch.nn.functional.adaptive_avg_pool2d(
+            torch.from_numpy(chart).permute(2, 0, 1)[None], (h, w)
+        )[0]
+        .permute(1, 2, 0)
+        .numpy()
+    )
+    # a random tiny VAE is far from linear, so only require clearly better than a flat grey
+    assert np.abs(rgb - target).mean() < np.abs(0.5 - target).mean()

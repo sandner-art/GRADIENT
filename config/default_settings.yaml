@@ -58,6 +58,8 @@ performance:
   max_cached_pipelines: 1
   # LoRAs kept loaded per model; switching between them or changing weights is then instant.
   max_loaded_loras: 6
+  # Step-by-step previews of running renders (a cheap latent->RGB projection per step).
+  live_preview: true
   # Decode with VAE tiling when width*height exceeds this many pixels.
   vae_tiling_min_pixels: 1572864   # ~1536x1024
   # Optional diffusers attention backend, e.g. "flash", "sage", "_native_cudnn".

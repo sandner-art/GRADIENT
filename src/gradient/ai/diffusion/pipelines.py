@@ -220,6 +220,11 @@ def generate_images(
             )
         all_probes.insert(0, ModulationController(request.modulation, request))
 
+    from gradient.ai.diffusion import preview as live_preview
+
+    if callbacks_enabled and live_preview.enabled():
+        all_probes.append(live_preview.LivePreview(request.height, request.width))
+
     def on_step_end(pipeline, step: int, timestep, callback_kwargs: dict) -> dict:
         check_cancelled()
         progress_tracker.update(step + 1)

@@ -146,6 +146,11 @@
 						result.mean_abs_tangent * 255
 					).toFixed(2)} levels per CFG unit
 				</div>
+				{#if result.note}
+					<p class="w-full text-xs text-amber-700 dark:text-amber-400" role="status">
+						{result.note}
+					</p>
+				{/if}
 				<div class="flex gap-1" role="group" aria-label="View">
 					<button
 						type="button"

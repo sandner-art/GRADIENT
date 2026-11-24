@@ -20,12 +20,19 @@
 	import { gallery, patchItem, removeItems } from '#lib/gallery/state.svelte.js';
 	import * as ui_ from '#lib/lab/ui.js';
 	import { onJobChange } from '#lib/stores/queue.svelte.js';
-	import { goTo, notify, openViewer, ui } from '#lib/stores/ui.svelte.js';
+	import { imageMenu } from '#lib/gallery/menus.js';
+	import {
+		goTo,
+		notify,
+		openMenu,
+		openViewer,
+		ui,
+		type GalleryView
+	} from '#lib/stores/ui.svelte.js';
 	import type { GalleryFilter, RunItem } from '#lib/types.js';
 	import { apiErrorMessage } from '#lib/utils/format.js';
 
 	const PAGE = 60;
-	let view = $state<'images' | 'runs' | 'projects'>('images');
 	let exporting = $state<{
 		target: { ids: number[] } | { filter: Record<string, unknown> };
 		count: number;
@@ -109,7 +116,7 @@
 	});
 
 	$effect(() => {
-		if (view === 'runs') loadRuns(true);
+		if (ui.galleryView === 'runs') loadRuns(true);
 	});
 
 	// infinite scroll
@@ -140,7 +147,7 @@
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(() => {
 				if ((ui.galleryFilter.sort ?? 'newest') === 'newest') load(true);
-				if (view === 'runs') loadRuns(true);
+				if (ui.galleryView === 'runs') loadRuns(true);
 				refreshFacets();
 			}, 600);
 		});
@@ -166,6 +173,73 @@
 	function toggle(id: number) {
 		if (selected.has(id)) selected.delete(id);
 		else selected.add(id);
+	}
+
+	/** Right-click on a tile: the selection's menu if it is part of one, else the image's. */
+	function tileMenu(e: MouseEvent, id: number, index: number) {
+		const item = gallery.items[index];
+		if (selected.size > 1 && selected.has(id)) {
+			const n = selected.size;
+			openMenu(
+				e,
+				[
+					{ label: `Open ${n} images`, run: () => openViewer([...selected], 0) },
+					{ separator: true },
+					{ rating: null, rate: (stars) => bulk('rate', stars) },
+					{ label: 'Add to favourites', run: () => bulk('favorite', true) },
+					{ label: 'Remove from favourites', run: () => bulk('favorite', false) },
+					{
+						label: `Export ${n} to a project…`,
+						run: () => (exporting = { target: { ids: [...selected] }, count: n })
+					},
+					{ label: 'Clear the selection', run: () => selected.clear() },
+					{ separator: true },
+					{
+						label: `Delete ${n} images…`,
+						danger: true,
+						keepOpen: true,
+						run: () => {
+							if (ui.menu)
+								ui.menu.items = ui.menu.items.map((it) =>
+									'label' in it && it.label === `Delete ${n} images…`
+										? {
+												label: `Delete ${n}: click to confirm (moves to the trash folder)`,
+												danger: true,
+												run: () => bulk('delete')
+											}
+										: it
+								);
+						}
+					}
+				],
+				`${n} selected`
+			);
+			return;
+		}
+		openMenu(
+			e,
+			imageMenu(id, {
+				ids: gallery.items.map((it) => it.id),
+				rating: item?.rating ?? null,
+				favorite: item?.favorite ?? false,
+				extra: [
+					{
+						label: selected.has(id) ? 'Deselect' : 'Select',
+						run: () => {
+							toggle(id);
+							lastClicked = id;
+						}
+					}
+				],
+				more: [
+					{
+						label: 'Export to a project…',
+						run: () => (exporting = { target: { ids: [id] }, count: 1 })
+					}
+				]
+			}),
+			item?.prompt ?? undefined
+		);
 	}
 
 	async function bulk(action: Parameters<typeof bulkAction>[1], value?: unknown) {
@@ -241,22 +315,22 @@
 						class="border border-gray-300 px-3 py-1.5 text-sm font-medium dark:border-gray-600"
 						class:rounded-l-md={i === 0}
 						class:rounded-r-md={i === 2}
-						class:bg-indigo-600={view === id}
-						class:text-white={view === id}
-						aria-pressed={view === id}
-						onclick={() => (view = id as typeof view)}>{label}</button
+						class:bg-indigo-600={ui.galleryView === id}
+						class:text-white={ui.galleryView === id}
+						aria-pressed={ui.galleryView === id}
+						onclick={() => (ui.galleryView = id as GalleryView)}>{label}</button
 					>
 				{/each}
 			</div>
 			<span class={ui_.muted}>
-				{#if view === 'images'}{gallery.total} image{gallery.total === 1
+				{#if ui.galleryView === 'images'}{gallery.total} image{gallery.total === 1
 						? ''
 						: 's'}{#if gallery.facets && activeFilters}
-						of {gallery.facets.total}{/if}{:else if view === 'runs'}{runsTotal} runs{/if}
+						of {gallery.facets.total}{/if}{:else if ui.galleryView === 'runs'}{runsTotal} runs{/if}
 			</span>
 		</div>
 
-		{#if view === 'images'}
+		{#if ui.galleryView === 'images'}
 			<div class="flex flex-wrap items-center gap-2">
 				<input
 					class={ui_.sized(ui_.smallInput, 'w-56')}
@@ -408,7 +482,7 @@
 
 	{#if error}<div class={ui_.errorBox} role="alert">{error}</div>{/if}
 
-	{#if view === 'images'}
+	{#if ui.galleryView === 'images'}
 		{#if !gallery.items.length && !gallery.loading}
 			<div class="{ui_.card} text-center">
 				<p class={ui_.muted}>
@@ -427,6 +501,8 @@
 					class="group relative overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800"
 					class:ring-4={selected.has(item.id)}
 					class:ring-indigo-500={selected.has(item.id)}
+					role="group"
+					oncontextmenu={(e) => tileMenu(e, item.id, i)}
 				>
 					<button
 						type="button"
@@ -565,12 +641,12 @@
 				</span>
 			</div>
 		{/if}
-	{:else if view === 'projects'}
+	{:else if ui.galleryView === 'projects'}
 		<ProjectsPanel
 			onshow={(uuid) => {
 				search = '';
 				ui.galleryFilter = { sort: f.sort ?? 'newest', project: uuid };
-				view = 'images';
+				ui.galleryView = 'images';
 			}}
 			onchange={() => {
 				refreshFacets();
@@ -587,7 +663,7 @@
 						class="grid h-24 w-24 flex-none grid-cols-2 gap-0.5 overflow-hidden rounded bg-gray-100 dark:bg-gray-700"
 						aria-label="Show the images of this run"
 						onclick={() => {
-							view = 'images';
+							ui.galleryView = 'images';
 							ui.galleryFilter = { sort: 'oldest', run: run.run_uuid };
 						}}
 					>
@@ -630,7 +706,7 @@
 								type="button"
 								class="text-indigo-600 hover:underline dark:text-indigo-400"
 								onclick={() => {
-									view = 'images';
+									ui.galleryView = 'images';
 									ui.galleryFilter = { sort: 'oldest', run: run.run_uuid };
 								}}>Open</button
 							>

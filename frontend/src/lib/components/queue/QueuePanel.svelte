@@ -14,7 +14,8 @@
 		runningJob,
 		waitingJobs
 	} from '#lib/stores/queue.svelte.js';
-	import { notify, openGallery, openViewer, ui } from '#lib/stores/ui.svelte.js';
+	import { jobMenu } from '#lib/gallery/menus.js';
+	import { notify, openGallery, openMenu, openViewer, ui } from '#lib/stores/ui.svelte.js';
 	import type { QueueJob } from '#lib/types.js';
 	import { apiErrorMessage } from '#lib/utils/format.js';
 
@@ -130,6 +131,8 @@
 				{#if running}
 					<div
 						class="rounded border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-800 dark:bg-indigo-950"
+						role="group"
+						oncontextmenu={(e) => openMenu(e, jobMenu(running), running.label)}
 					>
 						<div class="flex items-start justify-between gap-2">
 							<div class="min-w-0">
@@ -172,6 +175,7 @@
 						{#each waiting as job, i (job.id)}
 							<li
 								class="flex items-center gap-2 rounded border border-gray-200 px-2 py-1.5 text-sm dark:border-gray-700"
+								oncontextmenu={(e) => openMenu(e, jobMenu(job), job.label)}
 							>
 								<span class="w-5 text-right text-xs text-gray-400 tabular-nums">{i + 1}</span>
 								<span class="min-w-0 flex-1 truncate" title={job.label}>{job.label}</span>
@@ -227,7 +231,10 @@
 				<ul class="space-y-2">
 					{#each finished as job (job.id)}
 						{@const ids = outputIds(job)}
-						<li class="rounded border border-gray-200 p-2 text-sm dark:border-gray-700">
+						<li
+							class="rounded border border-gray-200 p-2 text-sm dark:border-gray-700"
+							oncontextmenu={(e) => openMenu(e, jobMenu(job), job.label)}
+						>
 							<div class="flex items-start justify-between gap-2">
 								<div class="min-w-0">
 									<p class="truncate" title={job.label}>

@@ -11,9 +11,18 @@
 		queue,
 		retryJob
 	} from '#lib/stores/queue.svelte.js';
-	import { openGallery, openViewer } from '#lib/stores/ui.svelte.js';
+	import { imageMenu, jobMenu } from '#lib/gallery/menus.js';
+	import { openGallery, openMenu, openViewer } from '#lib/stores/ui.svelte.js';
 
-	let { form }: { form: 'text' | 'image' } = $props();
+	interface Props {
+		form: 'text' | 'image';
+		/** image shown large in the preview panel, and the Compare partner */
+		selected?: number | null;
+		other?: number | null;
+		/** click on a thumbnail (without it, a click opens the viewer) */
+		onpick?: (id: number, e: MouseEvent) => void;
+	}
+	let { form, selected = null, other = null, onpick }: Props = $props();
 
 	const jobs = $derived(formJobs[form].map((id) => queue.jobs[id]).filter(Boolean));
 	const allIds = $derived(jobs.flatMap((j) => outputIds(j)));
@@ -49,8 +58,13 @@
 						<button
 							type="button"
 							class="group relative overflow-hidden rounded bg-gray-100 hover:ring-2 hover:ring-indigo-500 dark:bg-gray-700"
-							title={job.label}
-							onclick={() => openViewer(allIds, allIds.indexOf(id))}
+							class:ring-2={selected === id || other === id}
+							class:ring-indigo-600={selected === id}
+							class:ring-amber-500={other === id && selected !== id}
+							title="{job.label} (double-click: viewer, right-click: more)"
+							onclick={(e) => (onpick ? onpick(id, e) : openViewer(allIds, allIds.indexOf(id)))}
+							ondblclick={() => openViewer(allIds, allIds.indexOf(id))}
+							oncontextmenu={(e) => openMenu(e, imageMenu(id, { ids: allIds }), job.label)}
 						>
 							<img
 								src={thumbUrl(id, 256)}
@@ -68,6 +82,8 @@
 					<div
 						class="flex aspect-square flex-col justify-between rounded border border-dashed border-gray-300 p-2 text-xs dark:border-gray-600"
 						title={job.label}
+						role="group"
+						oncontextmenu={(e) => openMenu(e, jobMenu(job), job.label)}
 					>
 						<span class="line-clamp-3 text-gray-600 dark:text-gray-300">{job.label}</span>
 						<div class="space-y-1">

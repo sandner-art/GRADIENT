@@ -94,6 +94,12 @@ def load_feature_model(name: str | None = None) -> tuple[FeatureModel, str | Non
             model = AutoModel.from_pretrained(source, dtype=torch.float32).to(get_device()).eval()
         except Exception as e:  # gated, missing, offline ...
             reason = str(e).splitlines()[0][:160]
+            if "gated" in str(e).lower() or "401" in str(e) or "403" in str(e):
+                reason = (
+                    "gated by Meta: request access at https://huggingface.co/"
+                    + candidate
+                    + ", then download it in the Models tab with your Hugging Face token"
+                )
             errors.append(f"{candidate} unavailable ({reason})")
             logger.info("Feature model %s unavailable: %s", candidate, reason)
             continue

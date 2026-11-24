@@ -15,12 +15,13 @@
 		updateOutput
 	} from '#lib/gallery/api.js';
 	import { gallery, patchItem, removeItems } from '#lib/gallery/state.svelte.js';
-	import { lab } from '#lib/lab/labState.svelte.js';
+	import { imageMenu } from '#lib/gallery/menus.js';
 	import {
 		closeViewer,
-		goTo,
 		notify,
 		openGallery,
+		openMenu,
+		sendToLab,
 		ui,
 		useAsInitImage,
 		useSettings
@@ -143,24 +144,8 @@
 	}
 
 	function openInLab() {
-		const p = params;
-		Object.assign(lab.base, {
-			model_id: p.model_id ?? lab.base.model_id,
-			prompt: p.prompt ?? lab.base.prompt,
-			negative_prompt: p.negative_prompt ?? '',
-			width: p.width ?? lab.base.width,
-			height: p.height ?? lab.base.height,
-			num_inference_steps: p.num_inference_steps ?? lab.base.num_inference_steps,
-			guidance_scale:
-				typeof p.guidance_scale === 'number' ? p.guidance_scale : lab.base.guidance_scale,
-			seed: p.seed ?? null,
-			scheduler_id: p.scheduler_id ?? null,
-			lora: p.loras?.[0]?.name ?? null,
-			lora_weight: p.loras?.[0]?.weight ?? 1
-		});
 		closeViewer();
-		goTo('lab');
-		notify('Settings loaded into the Lab', 'success');
+		sendToLab(params);
 	}
 
 	async function copyPrompt() {
@@ -248,6 +233,16 @@
 					style:image-rendering={Number(params.width) && Number(params.width) < 384
 						? 'pixelated'
 						: 'auto'}
+					oncontextmenu={(e) =>
+						openMenu(
+							e,
+							imageMenu(id, {
+								inViewer: true,
+								rating: detail?.rating ?? null,
+								favorite: detail?.favorite ?? false
+							}),
+							String(params.prompt ?? '')
+						)}
 				/>
 				{#if count > 1}
 					<button

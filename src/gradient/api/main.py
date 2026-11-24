@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     APP_VERSION = version("gradient-workbench")
 except PackageNotFoundError:  # running from a source checkout without install
-    APP_VERSION = "0.6.0"
+    APP_VERSION = "0.7.0"
 
 FRONTEND_BUILD = PROJECT_ROOT / "frontend" / "build"
 

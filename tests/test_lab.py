@@ -178,6 +178,43 @@ def test_taylor_endpoint(client, tiny_sd, method):
     tangent = (_img(data["tangent_png_base64"]) - 128) / 127 * data["tangent_scale"]
     assert np.abs(tangent).mean() > 0
     assert _img(data["base_image_base64"]).shape == (64, 64, 3)
+    assert data["note"] is None
+
+
+def test_jvp_with_mixed_dtypes(tiny_sd_source):
+    """fp16 UNet/VAE with a float32 text encoder (as some custom checkpoints load): the JVP
+    sampler keeps every UNet input in the UNet's dtype instead of failing with
+    'expected mat1 and mat2 to have the same dtype'."""
+    from diffusers import StableDiffusionPipeline
+
+    from gradient.ai.diffusion.models import Text2ImageRequest
+    from gradient.ai.lab import unet_sampler
+
+    pipe = StableDiffusionPipeline.from_pretrained(
+        str(tiny_sd_source), dtype=torch.float16, safety_checker=None
+    )
+    pipe.text_encoder.to(torch.float32)
+    req = Text2ImageRequest(model_id="x", **BASE)
+    image, tangent = unet_sampler.guidance_jvp(pipe, req, 5)
+    assert torch.isfinite(tangent).all() and tangent.abs().mean() > 0
+    assert image.shape == (64, 64, 3)
+
+
+def test_taylor_auto_falls_back(client, tiny_sd, monkeypatch):
+    from gradient.ai.lab import unet_sampler
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("expected mat1 and mat2 to have the same dtype")
+
+    monkeypatch.setattr(unet_sampler, "guidance_jvp", broken)
+    body = {"base_request": {**BASE, "model_id": tiny_sd}}
+    r = client.post("/api/v1/lab/taylor-preview", json={**body, "method": "auto"})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["method"] == "finite_difference"
+    assert "used finite differences" in data["note"] and "mat1" in data["note"]
+    r = client.post("/api/v1/lab/taylor-preview", json={**body, "method": "jvp"})
+    assert r.status_code == 500 and "Try 'finite_difference'" in r.text
 
 
 # --------------------------------------------------------------------------- attention maps

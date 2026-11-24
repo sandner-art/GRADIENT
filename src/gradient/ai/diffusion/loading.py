@@ -81,6 +81,8 @@ class LoadedPipeline:
     active_adapters: list[str] = field(default_factory=list)
     lora_disabled: bool = False
     unmatched: set[str] = field(default_factory=set)
+    # live previews: fitted latent->RGB projection, False when this model can't preview
+    preview_projection: Any = None
 
 
 # LRU cache of base pipelines, most recently used last

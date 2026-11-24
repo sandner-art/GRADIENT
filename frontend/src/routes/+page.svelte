@@ -1,7 +1,9 @@
 <!-- frontend/src/routes/+page.svelte -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
+	import { onDestroy, onMount } from 'svelte';
 
+	import ContextMenu from '#lib/components/ContextMenu.svelte';
 	import Toasts from '#lib/components/Toasts.svelte';
 	import LLMChat from '#lib/components/LLMChat.svelte';
 	import ModelManager from '#lib/components/ModelManager.svelte';
@@ -11,6 +13,7 @@
 	import ImageViewer from '#lib/components/gallery/ImageViewer.svelte';
 	import LabWorkbench from '#lib/components/lab/LabWorkbench.svelte';
 	import QueuePanel from '#lib/components/queue/QueuePanel.svelte';
+	import PreviewPanel from '#lib/components/render/PreviewPanel.svelte';
 	import RenderForm from '#lib/components/render/RenderForm.svelte';
 
 	import { get } from '#lib/apiClient.js';
@@ -21,6 +24,7 @@
 		onJobChange,
 		outputIds
 	} from '#lib/stores/queue.svelte.js';
+	import { setupNavigation } from '#lib/stores/nav.svelte.js';
 	import { t2iFormStore } from '#lib/stores/t2iFormStore.js';
 	import { goTo, notify, openViewer, ui, type Tab } from '#lib/stores/ui.svelte.js';
 	import type { XYZGridResponse } from '#lib/types.js';
@@ -34,6 +38,14 @@
 		{ id: 'chat', label: 'LLM Chat' },
 		{ id: 'models', label: 'Models' }
 	];
+
+	// Back/Forward (mouse back button, Alt+Left) navigate inside the app; set up once the
+	// router has started
+	let stopNavigation: (() => void) | undefined;
+	afterNavigate(() => {
+		stopNavigation ??= setupNavigation();
+	});
+	onDestroy(() => stopNavigation?.());
 
 	// Device / model availability shown in the header
 	let deviceLabel = $state('');
@@ -175,9 +187,15 @@
 {:else if ui.tab === 'gallery'}
 	<Gallery />
 {:else if ui.tab === 't2i'}
-	<div class="mx-auto max-w-3xl"><RenderForm mode="text" store={t2iFormStore} /></div>
+	<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,36rem)_minmax(0,1fr)]">
+		<RenderForm mode="text" store={t2iFormStore} />
+		<PreviewPanel form="text" />
+	</div>
 {:else if ui.tab === 'i2i'}
-	<div class="mx-auto max-w-3xl"><RenderForm mode="image" store={i2iFormStore} /></div>
+	<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,36rem)_minmax(0,1fr)]">
+		<RenderForm mode="image" store={i2iFormStore} />
+		<PreviewPanel form="image" />
+	</div>
 {:else}
 	<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 		<section class="space-y-6">
@@ -248,4 +266,5 @@
 {/if}
 
 <ImageViewer />
+<ContextMenu />
 <Toasts />

@@ -241,6 +241,8 @@ export interface TaylorResponse {
 	magnitude_heatmap_base64: string;
 	mean_abs_tangent: number;
 	performance_ms: number;
+	/** e.g. why 'auto' fell back from JVP to finite differences */
+	note?: string | null;
 }
 
 export interface AttentionMapRequest {
@@ -370,13 +372,24 @@ export interface QueueJob {
 	started: number | null;
 	finished: number | null;
 	/** step/total for the current render; item/items for grids */
-	progress: { step?: number; total?: number; item?: number; items?: number; phase?: string };
+	progress: {
+		step?: number;
+		total?: number;
+		item?: number;
+		items?: number;
+		phase?: string;
+		/** counts live previews (GET /queue/{id}/preview); preview_step is the step shown */
+		preview?: number;
+		preview_step?: number;
+	};
 	run_uuid: string | null;
 	error: string | null;
 	result: { run_uuid?: string; outputs?: JobOutputRef[]; performance_ms?: number } | null;
 	position: number | null;
 	retryable: boolean;
 	model_id: string | null;
+	/** the job's settings (input images left out) */
+	payload?: Record<string, unknown>;
 }
 
 export type QueueEvent =

@@ -94,6 +94,24 @@ def initial_noise(pipe, request: DiffusionTaskBase, seed: int) -> torch.Tensor:
     )
 
 
+def weight_dtype(module: torch.nn.Module) -> torch.dtype:
+    """The dtype the module's weights actually have (offload hooks can make `.dtype` stale)."""
+    for p in module.parameters():
+        if p.is_floating_point():
+            return p.dtype
+    return getattr(module, "dtype", torch.float32)
+
+
+def _cast(cond: Conditioning, dtype: torch.dtype) -> Conditioning:
+    added = None
+    if cond.added is not None:
+        added = {
+            k: v.to(dtype) if torch.is_tensor(v) and v.is_floating_point() else v
+            for k, v in cond.added.items()
+        }
+    return Conditioning(cond.embeds.to(dtype), added, cond.cfg)
+
+
 def sample(
     pipe, request: DiffusionTaskBase, seed: int, guidance_offset: torch.Tensor | float = 0.0
 ) -> torch.Tensor:
@@ -103,21 +121,27 @@ def sample(
     timesteps = sched.timesteps
     schedule = parse_guidance_schedule(request.guidance_scale, len(timesteps))
     cfg = max(schedule) > 1.0 or torch.is_tensor(guidance_offset)
-    cond = encode(pipe, request.prompt, request.negative_prompt, request.height, request.width, cfg)
-    latents = initial_noise(pipe, request, seed) * sched.init_noise_sigma
     unet = pipe.unet
+    dtype = weight_dtype(unet)
+    # Everything fed to the UNet stays in its weight dtype: text encoders, schedulers or
+    # offload hooks can hand back float32 tensors, and fp16 layers reject those.
+    cond = _cast(
+        encode(pipe, request.prompt, request.negative_prompt, request.height, request.width, cfg),
+        dtype,
+    )
+    latents = (initial_noise(pipe, request, seed) * sched.init_noise_sigma).to(dtype)
     report_progress(step=0, total=len(timesteps))
     for i, t in enumerate(timesteps):
         check_cancelled()
         x = torch.cat([latents] * 2) if cond.cfg else latents
-        x = sched.scale_model_input(x, t)
+        x = sched.scale_model_input(x, t).to(dtype)
         noise = unet(
             x, t, encoder_hidden_states=cond.embeds, added_cond_kwargs=cond.added, return_dict=False
         )[0]
         if cond.cfg:
             uncond, text = noise.chunk(2)
             noise = uncond + (schedule[i] + guidance_offset) * (text - uncond)
-        latents = sched.step(noise, t, latents, return_dict=False)[0]
+        latents = sched.step(noise, t, latents, return_dict=False)[0].to(dtype)
         report_progress(step=i + 1)
     return latents
 
@@ -127,16 +151,32 @@ def decode(pipe, latents: torch.Tensor) -> torch.Tensor:
     vae = pipe.vae
     scaling = getattr(vae.config, "scaling_factor", 0.18215)
     shift = getattr(vae.config, "shift_factor", None) or 0.0
-    upcast = bool(getattr(vae.config, "force_upcast", False)) and vae.dtype == torch.float16
+    upcast = (
+        bool(getattr(vae.config, "force_upcast", False))
+        and weight_dtype(vae) == torch.float16
+        and not _offloaded(vae)  # .to() on an offloaded module doesn't stick
+    )
     if upcast:
         vae.to(torch.float32)
     try:
         z = latents / scaling + shift
-        image = vae.decode(z.to(vae.dtype), return_dict=False)[0]
+        image = vae.decode(z.to(weight_dtype(vae)), return_dict=False)[0]
     finally:
         if upcast:
             vae.to(torch.float16)
     return (image / 2 + 0.5).clamp(0, 1)
+
+
+def _offloaded(module: torch.nn.Module) -> bool:
+    """True if group offloading or sequential CPU offload keeps the module's weights elsewhere,
+    so a `.to(dtype)` on it doesn't stick. (Model CPU offload moves whole modules; `.to` works.)"""
+    for m in module.modules():
+        registry = getattr(m, "_diffusers_hook", None)
+        if registry is not None and any("offload" in n for n in getattr(registry, "hooks", {})):
+            return True
+        if m is not module and getattr(m, "_hf_hook", None) is not None:
+            return True
+    return False
 
 
 @contextlib.contextmanager

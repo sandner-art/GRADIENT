@@ -31,6 +31,9 @@ class TaylorResponse(BaseModel):
     magnitude_heatmap_base64: str
     mean_abs_tangent: float
     performance_ms: float
+    note: str | None = Field(
+        default=None, description="E.g. why 'auto' fell back from JVP to finite differences"
+    )
 
 
 class AttentionMapRequest(BaseModel):
