@@ -14,6 +14,7 @@ from gradient.core.jobs import job_queue
 from gradient.core.quiet import quiet_libraries
 from gradient.core.version import app_version
 from gradient.database.session import dispose_engine, init_db
+from gradient.gallery import sweeps
 
 from . import websocket as websocket_endpoints
 from .endpoints import generate as generate_endpoints
@@ -25,6 +26,7 @@ from .endpoints import presets as presets_endpoints
 from .endpoints import projects as projects_endpoints
 from .endpoints import queue as queue_endpoints
 from .endpoints import status as status_endpoints
+from .endpoints import sweeps as sweeps_endpoints
 from .endpoints import system as system_endpoints
 from .endpoints import visualize as visualize_endpoints
 
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     register_job_kinds()
     job_queue.set_persistence(persist_job)
+    job_queue.add_finish_hook(sweeps.on_job_finished)  # results folders of imported test sweeps
     try:
         job_queue.restore(await load_recent_jobs())
     except Exception as e:
@@ -81,6 +84,7 @@ app.include_router(lab_endpoints.router, prefix="/api/v1", tags=["Lab"])
 app.include_router(queue_endpoints.router, prefix="/api/v1", tags=["Queue"])
 app.include_router(history_endpoints.router, prefix="/api/v1", tags=["Gallery"])
 app.include_router(projects_endpoints.router, prefix="/api/v1", tags=["Projects"])
+app.include_router(sweeps_endpoints.router, prefix="/api/v1", tags=["Test sweeps"])
 app.include_router(websocket_endpoints.router, tags=["WebSocket"])
 
 

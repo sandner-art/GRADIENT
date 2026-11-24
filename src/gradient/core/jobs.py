@@ -55,6 +55,7 @@ class JobCancelledError(RuntimeError):
 
 Handler = Callable[["Job"], Awaitable[Any]]
 Summarizer = Callable[[Any], dict[str, Any]]
+FinishHook = Callable[["Job"], Awaitable[None]]
 
 
 @dataclass
@@ -174,6 +175,7 @@ class JobQueue:
         self._worker: asyncio.Task | None = None
         self._loop_ref: asyncio.AbstractEventLoop | None = None
         self._persist: Callable[[Job], Awaitable[None]] | None = None
+        self._finish_hooks: list[FinishHook] = []
 
     # ---- setup
     def register(self, kind: str, handler: Handler, summarize: Summarizer | None = None) -> None:
@@ -181,6 +183,18 @@ class JobQueue:
 
     def set_persistence(self, fn: Callable[[Job], Awaitable[None]] | None) -> None:
         self._persist = fn
+
+    def add_finish_hook(self, fn: FinishHook) -> None:
+        """Called (awaited) after a job finished, failed or was cancelled, once it is stored."""
+        if fn not in self._finish_hooks:
+            self._finish_hooks.append(fn)
+
+    async def _finished(self, job: Job) -> None:
+        for hook in list(self._finish_hooks):
+            try:
+                await hook(job)
+            except Exception as e:  # a hook must never break the queue
+                logger.warning("Finish hook %s failed for job %s: %s", hook, job.id, e)
 
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
@@ -297,6 +311,7 @@ class JobQueue:
             self.order.remove(job.id)
             self._finish(job, CANCELLED)
             await self._changed(job)
+            await self._finished(job)
         elif job.status == RUNNING:
             job.cancel_event.set()
             job.progress = {**job.progress, "phase": "cancelling"}
@@ -425,6 +440,7 @@ class JobQueue:
             self.running = None
         job.progress = {k: v for k, v in job.progress.items() if k != "phase"}
         await self._changed(job)
+        await self._finished(job)
         if job.waiter is not None and not job.waiter.done():
             if error is None:
                 job.waiter.set_result(outcome)

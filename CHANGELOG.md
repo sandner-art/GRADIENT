@@ -7,6 +7,8 @@
 - **Tags and origin**: `tags` become gallery tags on the job's images (shown as *from the app that queued the job*), and `origin` (app, run, item…, up to 4 KB of JSON) is kept with each image (`origin` and `group` in the image's details). Retried jobs keep all three, and they survive restarts in the queue's history.
 - **LoRAs that don't fit are reported**: a LoRA that matches no layer of the model (one for another model family) used to be skipped with only a console warning, so the image looked like a no-LoRA render. Now the job's result has `loras_skipped`, and the image's parameters record it.
 
+- **Import test sweep…** (Queue panel): a sweep file exported by ArtAgents' LoRA Lab (when ArtAgents can't reach GRADIENT, or for overnight renders) is checked (model installed, each LoRA found by name or by sha256, a different file refused, a path for missing ones), queued as one group, and when the last image is done GRADIENT writes a results folder (images + `artagents-results.json`) that ArtAgents imports as a normal LoRA Lab run. *Test sweeps* in the Queue panel shows progress, the results path and *Write results now*. API: `/sweeps/preview`, `/sweeps`, `/sweeps/{id}`, `/sweeps/{id}/results`.
+
 ### API token for other computers
 - `app.api_token` (or `GRADIENT_API_TOKEN`): when set, requests from other computers need `Authorization: Bearer <token>`; a browser opens GRADIENT once with `?token=<token>` (kept in an HttpOnly cookie, removed from the address). Requests from this computer never need it, so the web UI and `gradient stop` work as before; requests through a proxy count as remote.
 - The console warns when GRADIENT listens beyond this computer (`--host 0.0.0.0`) without a token.

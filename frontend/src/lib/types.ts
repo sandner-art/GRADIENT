@@ -691,3 +691,53 @@ export interface ExploreBranchesResponse {
 	feature_note: string | null;
 	performance_ms: number;
 }
+
+/** A LoRA of an imported test sweep and where GRADIENT found it (src/gradient/gallery/sweeps.py). */
+export interface SweepLora {
+	key: string;
+	name: string;
+	sha256: string | null;
+	resolved: string | null;
+	status: 'ok' | 'found_by_hash' | 'unverified' | 'missing' | 'hash_mismatch';
+	message: string;
+}
+
+/** POST /sweeps/preview: what importing an ArtAgents test sweep would do. */
+export interface SweepPreview {
+	id: string;
+	sha256: string;
+	name: string;
+	run: string;
+	model_id: string;
+	model_found: boolean;
+	model_defaults: { steps?: number; guidance_scale?: number };
+	options: Record<string, string | number>;
+	images: number;
+	prompts: number;
+	conditions: number;
+	loras: SweepLora[];
+	ready: boolean;
+	problems: string[];
+	results_dir: string;
+}
+
+export interface SweepQueued extends SweepPreview {
+	group: string;
+	run_uuid: string;
+	queued: number;
+}
+
+/** GET /sweeps: an imported sweep with its jobs' states. */
+export interface SweepStatus {
+	id: string;
+	name: string;
+	run: string;
+	model_id: string;
+	run_uuid: string;
+	results_dir: string;
+	written: number | null;
+	imported: number;
+	images: number;
+	counts: Record<string, number>;
+	done: boolean;
+}

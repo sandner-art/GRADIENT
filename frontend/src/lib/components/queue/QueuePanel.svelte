@@ -16,8 +16,10 @@
 	} from '#lib/stores/queue.svelte.js';
 	import { jobMenu } from '#lib/gallery/menus.js';
 	import { notify, openGallery, openMenu, openViewer, ui } from '#lib/stores/ui.svelte.js';
-	import type { QueueJob } from '#lib/types.js';
+	import { listSweeps, sweepProgress, writeSweepResults } from '#lib/sweeps.js';
+	import type { QueueJob, SweepStatus } from '#lib/types.js';
 	import { apiErrorMessage } from '#lib/utils/format.js';
+	import SweepImportDialog from './SweepImportDialog.svelte';
 
 	const running = $derived(runningJob());
 	const waiting = $derived(waitingJobs());
@@ -54,6 +56,42 @@
 			await fn();
 		} catch (e) {
 			notify(apiErrorMessage(e), 'error');
+		}
+	}
+
+	// test sweeps imported from ArtAgents (files): progress and their results folders
+	let importing = $state(false);
+	let sweeps = $state<SweepStatus[]>([]);
+
+	async function loadSweeps() {
+		try {
+			sweeps = (await listSweeps()).items.slice(0, 5);
+		} catch {
+			sweeps = [];
+		}
+	}
+
+	$effect(() => {
+		if (ui.queueOpen) {
+			void finished.length; // refresh as jobs finish
+			loadSweeps();
+		}
+	});
+
+	async function writeNow(id: string) {
+		await act(async () => {
+			const r = await writeSweepResults(id);
+			notify(`Results written: ${r.images} images, ${r.errors} missing or failed`, 'success');
+			await loadSweeps();
+		});
+	}
+
+	async function copyPath(path: string) {
+		try {
+			await navigator.clipboard.writeText(path);
+			notify('Folder path copied', 'success', undefined, 1500);
+		} catch {
+			notify('The browser blocked clipboard access', 'error');
 		}
 	}
 </script>
@@ -117,12 +155,20 @@
 					{queue.connected ? 'Live' : 'Reconnecting…'} · {waiting.length} waiting
 				</p>
 			</div>
-			<button
-				type="button"
-				class="text-2xl leading-none text-gray-500 hover:text-gray-800"
-				aria-label="Close"
-				onclick={() => (ui.queueOpen = false)}>×</button
-			>
+			<span class="flex items-center gap-3">
+				<button
+					type="button"
+					class="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+					title="Queue a test sweep file from ArtAgents' LoRA Lab"
+					onclick={() => (importing = true)}>Import test sweep…</button
+				>
+				<button
+					type="button"
+					class="text-2xl leading-none text-gray-500 hover:text-gray-800"
+					aria-label="Close"
+					onclick={() => (ui.queueOpen = false)}>×</button
+				>
+			</span>
 		</header>
 
 		<div class="flex-1 space-y-5 overflow-y-auto p-4">
@@ -214,6 +260,48 @@
 				</section>
 			{/if}
 
+			{#if sweeps.length}
+				<section>
+					<h3 class="mb-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+						Test sweeps
+					</h3>
+					<ul class="space-y-2">
+						{#each sweeps as sweep (sweep.id)}
+							<li class="rounded border border-gray-200 p-2 text-sm dark:border-gray-700">
+								<p class="truncate" title={sweep.name}>{sweep.name}</p>
+								<p class="text-xs text-gray-500">
+									{sweepProgress(sweep)}
+									{#if sweep.written}· results written{:else if sweep.done}· writing results…{/if}
+								</p>
+								<span class="mt-1 flex gap-3 text-xs">
+									<button
+										type="button"
+										class="text-indigo-600 hover:underline dark:text-indigo-400"
+										onclick={() => {
+											ui.queueOpen = false;
+											openGallery({ run: sweep.run_uuid });
+										}}>Gallery</button
+									>
+									<button
+										type="button"
+										class="text-indigo-600 hover:underline dark:text-indigo-400"
+										title={sweep.results_dir}
+										onclick={() => copyPath(sweep.results_dir)}>Copy results path</button
+									>
+									<button
+										type="button"
+										class="text-indigo-600 hover:underline dark:text-indigo-400"
+										title="Write the results folder with what is finished so far"
+										onclick={() => writeNow(sweep.id)}
+										>{sweep.written ? 'Write again' : 'Write results now'}</button
+									>
+								</span>
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+
 			<section>
 				<div class="mb-2 flex items-center justify-between">
 					<h3 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Finished</h3>
@@ -298,4 +386,8 @@
 			</section>
 		</div>
 	</aside>
+{/if}
+
+{#if importing}
+	<SweepImportDialog onclose={() => (importing = false)} onqueued={() => loadSweeps()} />
 {/if}
