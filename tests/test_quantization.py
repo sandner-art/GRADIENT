@@ -75,6 +75,18 @@ def test_options_and_errors(client, tiny_sd):
     assert r.status_code in (400, 422) and "Unknown quantization" in r.text
 
 
+def test_reasons_without_the_quant_extras(monkeypatch):
+    """As in CI without `.[quant]`: no GPU is the reason before a missing package."""
+    monkeypatch.setattr(quant, "_installed", lambda package: False)
+    monkeypatch.setattr(quant.torch.cuda, "is_available", lambda: False)
+    assert quant.unavailable_reason(quant.parse("bnb-4bit")) == "bitsandbytes needs an NVIDIA GPU"
+    assert "quant extras" in quant.unavailable_reason(quant.parse("torchao-int8"))
+    assert "quant extras" in quant.unavailable_reason(quant.parse("gguf:x.gguf"))
+    assert quant.unavailable_reason(quant.parse("none")) is None
+    monkeypatch.setattr(quant.torch.cuda, "is_available", lambda: True)
+    assert "quant extras" in quant.unavailable_reason(quant.parse("bnb-4bit"))
+
+
 def test_torchao_render_lora_and_jvp(client, tiny_sd, tiny_sd_source, workspace):
     pytest.importorskip("torchao")
     from helpers import build_tiny_lora

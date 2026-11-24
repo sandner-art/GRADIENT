@@ -153,13 +153,14 @@ def unavailable_reason(spec: QuantSpec) -> str | None:
     backend = spec.backend
     if backend is None:
         return None
+    # the GPU first: installing the package wouldn't help without one
+    if spec.name != "gguf" and BUILTIN[spec.name].get("cuda") and not torch.cuda.is_available():
+        return "bitsandbytes needs an NVIDIA GPU"
     if not _installed(PACKAGES[backend]):
         return (
             f"needs the '{PACKAGES[backend]}' package: install GRADIENT's quant extras "
             "(pip install -e .[quant])"
         )
-    if spec.name != "gguf" and BUILTIN[spec.name].get("cuda") and not torch.cuda.is_available():
-        return "bitsandbytes needs an NVIDIA GPU"
     return None
 
 

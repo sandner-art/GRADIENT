@@ -77,12 +77,18 @@ def test_branch_keeps_outside_and_replays(client, tiny_sd):
     diff = np.abs(_img(replay["image_base64"]) - _img(first["image_base64"]))
     assert diff.max() <= 2, diff.max()
 
-    # continuing from the branch: the next branch inherits its state
+    # continuing from the branch: the next branch shares the steps before it exactly. (The
+    # parent is the replayed branch now; the batched one above can differ in the last bits,
+    # because batch size changes floating-point rounding on some CPUs.)
+    parent = explorer.get_trajectory(spec)[0]
+    assert torch.allclose(parent.latents[-1], branch.latents[-1], atol=1e-3, rtol=1e-3)
     op2 = ExploreOp.model_validate({**first["op"], "step": 4, "seed": 5})
     again = explorer.get_trajectory(
         ExploreBase.model_validate({**base, "path": [first["op"], op2.model_dump()]})
     )[0]
-    assert len(again.latents) == 6 and torch.equal(again.latents[3], branch.latents[3])
+    assert len(again.latents) == 6
+    assert all(torch.equal(again.latents[i], parent.latents[i]) for i in range(4))
+    assert not torch.equal(again.latents[-1], parent.latents[-1])
 
 
 def test_map_tokens_and_kinds(client, tiny_sd, tiny_vision):

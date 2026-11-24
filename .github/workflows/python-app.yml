@@ -34,7 +34,7 @@ jobs:
         run: |
           uv venv .venv
           uv pip install --python .venv "torch>=2.15" --index-url https://download.pytorch.org/whl/cpu
-          uv pip install --python .venv -e ".[dev]"
+          uv pip install --python .venv -e ".[dev,quant]"
 
       - name: Lint
         run: |
