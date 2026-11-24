@@ -5,10 +5,11 @@
 	import LabBaseSettings from './LabBaseSettings.svelte';
 	import LabProgress from './LabProgress.svelte';
 	import ModulationLanes from './ModulationLanes.svelte';
+	import QuantReport from './QuantReport.svelte';
 	import TaylorPreview from './TaylorPreview.svelte';
 	import TokenAblation from './TokenAblation.svelte';
 
-	type Tool = 'taylor' | 'modulation' | 'attention' | 'ablation';
+	type Tool = 'taylor' | 'modulation' | 'attention' | 'ablation' | 'quantization';
 	const tools: { id: Tool; label: string; hint: string }[] = [
 		{ id: 'taylor', label: 'Taylor preview', hint: 'Preview other CFG values instantly' },
 		{ id: 'modulation', label: 'Modulation lanes', hint: 'Change things for part of the run' },
@@ -17,7 +18,12 @@
 			label: 'Attention maps',
 			hint: 'Where each word or concept is in the image'
 		},
-		{ id: 'ablation', label: 'Token ablation', hint: 'How much each word matters' }
+		{ id: 'ablation', label: 'Token ablation', hint: 'How much each word matters' },
+		{
+			id: 'quantization',
+			label: 'Quantization check',
+			hint: 'What loading the model quantized changes'
+		}
 	];
 	let tool = $state<Tool>('taylor');
 </script>
@@ -54,5 +60,6 @@
 		<div hidden={tool !== 'modulation'}><ModulationLanes /></div>
 		<div hidden={tool !== 'attention'}><AttentionTool /></div>
 		<div hidden={tool !== 'ablation'}><TokenAblation /></div>
+		<div hidden={tool !== 'quantization'}><QuantReport /></div>
 	</section>
 </div>

@@ -4,6 +4,7 @@
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Cpu         CPU-only PyTorch
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -LegacyGpu   GTX 9xx/10xx, Titan V (PyTorch 2.14 + CUDA 12.6)
 #   ... -WithLlm      also install llama-cpp-python (needs Visual Studio Build Tools to compile)
+#   ... -WithQuant    also install quantization backends (bitsandbytes, torchao, gguf)
 #   ... -Dev          also install test/lint tools
 #   ... -NoFrontend   skip building the web UI
 #
@@ -13,6 +14,7 @@ param(
     [switch]$Cpu,
     [switch]$LegacyGpu,
     [switch]$WithLlm,
+    [switch]$WithQuant,
     [switch]$Dev,
     [switch]$NoFrontend
 )
@@ -73,6 +75,7 @@ if ($LASTEXITCODE -ne 0) { throw "PyTorch installation failed" }
 # --- 4. GRADIENT ---------------------------------------------------------------
 $extras = @()
 if ($WithLlm) { $extras += "llm" }
+if ($WithQuant) { $extras += "quant" }
 if ($Dev) { $extras += "dev" }
 $target = if ($extras.Count) { ".[" + ($extras -join ",") + "]" } else { "." }
 if ($WithLlm -and -not $Cpu -and (Get-Command nvidia-smi -ErrorAction SilentlyContinue) -and -not $env:CMAKE_ARGS) {

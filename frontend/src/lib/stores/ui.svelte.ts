@@ -114,7 +114,8 @@ const COPY_KEYS = [
 	'custom_sigmas',
 	'loras',
 	'embeddings',
-	'vae_id'
+	'vae_id',
+	'quantization'
 ] as const;
 
 /** Settings of a generation, ready for a form store (seed optional). */
@@ -158,6 +159,7 @@ export function sendToLab(params: Record<string, unknown>) {
 			typeof p.guidance_scale === 'number' ? p.guidance_scale : lab.base.guidance_scale,
 		seed: p.seed === null || p.seed === undefined || p.seed === '' ? null : Number(p.seed),
 		scheduler_id: p.scheduler_id || null,
+		quantization: p.quantization && p.quantization !== 'none' ? p.quantization : null,
 		lora: loras[0]?.name ?? null,
 		lora_weight: loras[0]?.weight ?? 1
 	});

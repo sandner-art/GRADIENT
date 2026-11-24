@@ -1,6 +1,7 @@
 <!-- frontend/src/lib/components/lab/LabBaseSettings.svelte -->
 <!-- Model, prompt and sampling settings shared by all Lab tools. -->
 <script lang="ts">
+	import QuantizationSelect from '#lib/components/shared/QuantizationSelect.svelte';
 	import { onMount } from 'svelte';
 	import { get } from '#lib/apiClient.js';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
@@ -142,6 +143,13 @@
 						<option value={s}>{s}</option>
 					{/each}
 				</select>
+			</div>
+			<div class="sm:col-span-2">
+				<QuantizationSelect
+					id="lab_quantization"
+					value={b.quantization}
+					onchange={(v) => (b.quantization = v)}
+				/>
 			</div>
 		</div>
 

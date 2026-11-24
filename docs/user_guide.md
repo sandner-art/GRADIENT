@@ -53,6 +53,29 @@ The folder is flat, so tools that read one folder work directly. A caption file 
 
 Exporting again into the same project syncs first, then updates the copies and sidecars, so nothing the other tools added is lost. Tags show where they came from in the viewer (your tags are editable; imported ones can be removed with ×), and the viewer lists captions and the projects an image is in. *Show images* in the Projects view (or the *Project* filter) shows a project's images. *Forget* removes a project from the list but leaves the folder; *Add an existing project folder* brings it back (also after moving it).
 
+### Quantized models (Precision)
+
+**Precision** (next to the model in the render forms and in the Lab's base settings) loads the model quantized: smaller in memory, often a little faster, slightly different images. It is part of each render's settings, so you can render the same seed at full precision and quantized, and use `quantization` as an XYZ grid axis (`none, torchao-int8, bnb-4bit`); the grid renders all cells of one precision before loading the next.
+
+| Precision | Memory (denoiser) | Notes |
+|---|---|---|
+| Full precision | 100 % | the reference |
+| 8-bit (bitsandbytes) | ~55 % | NVIDIA GPUs; very close to full quality |
+| 4-bit NF4 (bitsandbytes) | ~30 % | NVIDIA GPUs; a common choice for FLUX/Qwen-Image on 12–16 GB |
+| int8 weights (torchao) | ~55 % | any device, also single-file checkpoints |
+| int8 weights + activations (torchao) | ~55 % | faster on GPUs with int8 kernels, a little lossier |
+| fp8 weights (torchao) | ~55 % | best on Ada/Hopper GPUs (RTX 40xx and newer) |
+| GGUF: *file* | depends on the file | pre-quantized denoiser (e.g. city96's FLUX GGUFs); put the `.gguf` in the checkpoints folder and pick the matching base model |
+
+*Text encoders too* also quantizes T5, Mistral or Qwen text encoders (for GGUF, those get torchao int8). Unavailable options are greyed out with the reason; install the backends with `install.ps1 -WithQuant` (or `./install.sh --with-quant`). bitsandbytes needs a diffusers-format model; for single-file checkpoints use torchao. LoRAs load on top of every precision, and the Lab's exact JVP runs through torchao and GGUF weights (if it fails on another setup, *auto* uses finite differences and says so). Images record their precision in their settings and PNG metadata (`Quantization: bnb-4bit`), and *Use settings* restores it.
+
+**Quantization check** (Lab) renders the Lab settings at full precision and with up to four precisions on the same seeds, one model load each, and reports per precision:
+- weight size of each part, load time, seconds per image and peak GPU memory;
+- PSNR, SSIM and the DINO feature distance to the reference; *relative change* divides that distance by the distance between two seeds of the reference, so 0.05 means "5 % of a new seed";
+- the Taylor tangent's cosine with the reference's (∂image/∂guidance): near 1 means Lab measurements made on the quantized model hold for the full model.
+
+A verdict sums it up per precision, the strips show reference | quantized | difference per seed, and the result is saved to the gallery as a Lab run.
+
 ### Fast rendering with LoRAs
 
 LoRAs stay loaded on the model, so changing a weight, switching between LoRAs you've used, or rendering without any (*✕* removes them) needs no reloading. Up to `performance.max_loaded_loras` (default 6) LoRAs are kept per model; the least recently used one is unloaded when you go over. A LoRA must match the model family (an SD 1.5 LoRA won't apply to SDXL): a LoRA that matches no layers of the model is skipped with a warning in the log, and a file that can't be loaded at all stops the job with an error.

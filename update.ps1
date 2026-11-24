@@ -4,7 +4,7 @@
 #   .\update.ps1 -Main        latest development version (main branch)
 #   .\update.ps1 -Check       only report whether an update is available
 #
-# Install options are passed through: -Cpu, -LegacyGpu, -WithLlm, -Dev, -NoFrontend.
+# Install options are passed through: -Cpu, -LegacyGpu, -WithLlm, -WithQuant, -Dev, -NoFrontend.
 # Your models, database and outputs in data\ and experiments\ are not touched.
 # If scripts are blocked: powershell -ExecutionPolicy Bypass -File update.ps1
 
@@ -14,6 +14,7 @@ param(
     [switch]$Cpu,
     [switch]$LegacyGpu,
     [switch]$WithLlm,
+    [switch]$WithQuant,
     [switch]$Dev,
     [switch]$NoFrontend
 )
@@ -66,7 +67,7 @@ if ($Main) {
 
 Say "Updating dependencies and rebuilding the web UI"
 $installArgs = @{}
-foreach ($name in "Cpu", "LegacyGpu", "WithLlm", "Dev", "NoFrontend") {
+foreach ($name in "Cpu", "LegacyGpu", "WithLlm", "WithQuant", "Dev", "NoFrontend") {
     if ((Get-Variable $name).Value) { $installArgs[$name] = $true }
 }
 & "$PSScriptRoot\install.ps1" @installArgs

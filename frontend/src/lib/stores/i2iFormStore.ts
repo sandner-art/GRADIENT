@@ -12,6 +12,7 @@ export const i2iDefaultState: ImageToImageRequest = {
     guidance_scale: 7.0,
     seed: null,
     scheduler_id: null,
+    quantization: null,
     num_outputs: 1,
     image_base64: '',
     strength: 0.75

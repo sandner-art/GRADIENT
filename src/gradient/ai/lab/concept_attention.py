@@ -432,7 +432,11 @@ def concept_attention_maps(request: ConceptAttentionRequest) -> ConceptAttention
         raise ValueError(f"At most {MAX_CONCEPTS} concepts")
 
     pipe, entry = get_pipeline(
-        base.model_id, vae_id=base.vae_id, loras=base.loras, embeddings=base.embeddings
+        base.model_id,
+        vae_id=base.vae_id,
+        loras=base.loras,
+        embeddings=base.embeddings,
+        quantization=base.quantization,
     )
     support = concept_support(pipe)
     if support is None:

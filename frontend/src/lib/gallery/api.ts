@@ -108,7 +108,8 @@ export function runTypeLabel(runType: string | null | undefined): string {
 		lab_taylor: 'Lab · Taylor',
 		lab_attention: 'Lab · attention',
 		lab_concept_attention: 'Lab · ConceptAttention',
-		lab_token_ablation: 'Lab · ablation'
+		lab_token_ablation: 'Lab · ablation',
+		lab_quantization: 'Lab · quantization'
 	};
 	return labels[runType ?? ''] ?? (runType || 'Unknown');
 }

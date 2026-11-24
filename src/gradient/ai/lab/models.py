@@ -143,3 +143,76 @@ class ConceptAttentionResponse(BaseModel):
     num_blocks: int = Field(..., description="Double-stream blocks in this model")
     steps_recorded: int
     performance_ms: float
+
+
+# ----------------------------------------------------------------- quantization fidelity
+class QuantReportRequest(BaseModel):
+    base_request: Text2ImageRequest = Field(
+        ..., description="Settings to render (its quantization is replaced per variant)"
+    )
+    variants: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=4,
+        description="Quantizations to test, e.g. ['torchao-int8', 'bnb-4bit', 'gguf:<file>']",
+    )
+    reference: str = Field(default="none", description="What the variants are compared with")
+    num_seeds: int = Field(
+        default=3, ge=2, le=8, description="Seeds per variant (seed, seed+1, ...)"
+    )
+    taylor: bool = Field(
+        default=True, description="Also compare ∂image/∂guidance (do Lab analyses still agree?)"
+    )
+    feature_model: str | None = Field(
+        default=None,
+        description="Vision model for the feature distances (default: DINOv3 ViT-S/16, DINOv2 small)",
+    )
+
+
+class QuantVariantReport(BaseModel):
+    quantization: str
+    label: str
+    error: str | None = None
+    weights_mb: dict[str, float] = Field(default_factory=dict)
+    denoiser_mb: float | None = None
+    load_seconds: float | None = None
+    seconds_per_image: float | None = None
+    peak_memory_mb: float | None = Field(default=None, description="CUDA peak while rendering")
+    psnr: float | None = Field(
+        default=None, description="dB against the reference (higher: closer)"
+    )
+    ssim: float | None = None
+    mean_abs_diff: float | None = Field(default=None, description="0..255 per channel")
+    feature_distance: float | None = Field(
+        default=None, description="Mean DINO patch cosine distance to the reference"
+    )
+    relative_change: float | None = Field(
+        default=None,
+        description="feature_distance divided by the distance between two reference seeds: "
+        "0 = identical, 1 = as different as a new seed",
+    )
+    taylor_cosine: float | None = Field(
+        default=None, description="Cosine similarity of ∂image/∂w with the reference's"
+    )
+    taylor_method: str | None = None
+    verdict: str = ""
+    strip_base64: str | None = Field(
+        default=None, description="Per seed: reference | variant | difference"
+    )
+
+
+class QuantReportResponse(BaseModel):
+    model_id: str
+    seeds: list[int]
+    reference: str
+    seed_spread: float | None = Field(
+        default=None, description="Mean DINO distance between reference images of different seeds"
+    )
+    feature_model: str | None = None
+    feature_note: str | None = None
+    variants: list[QuantVariantReport] = Field(..., description="The reference first")
+    image_base64: str = Field(
+        ..., description="Overview: one row per quantization, one column per seed"
+    )
+    summary: str
+    performance_ms: float

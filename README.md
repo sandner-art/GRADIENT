@@ -20,7 +20,7 @@ While powerful, existing generative AI tools often present fragmented workflows,
 3.  **Reproducible Research:** Integrating tools for systematic evaluation, logging, and analysis.
 4.  **Structural Creativity:** Offering capabilities to manipulate the generative process itself for unique artistic outcomes.
 
-## What works today (v0.7.0)
+## What works today (v0.8.0)
 
 *   **Any diffusers model family:** SD 1.5, SDXL, SD 3.5, FLUX.1, FLUX.2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2 and more (diffusers folders, Hub repos, and SD/SDXL/SD3/FLUX single-file checkpoints).
 *   **Built-in Model Manager:** a verified catalog of base models, LoRAs, VAEs, ControlNets and GGUF LLMs; one-click downloads from Hugging Face, any repo/file link, or direct URLs (e.g. Civitai), with progress, cancel and resume. Also on the command line.
@@ -37,6 +37,7 @@ While powerful, existing generative AI tools often present fragmented workflows,
     *   **Structural modulation lanes:** switch or blend the prompt, change guidance, scale chosen attention layers or a LoRA weight for part of the denoising run. Lanes also work in every API generation request.
     *   **Attention maps:** where each word or concept is in the image. **ConceptAttention** on FLUX.1, FLUX.2 and SD 3.5 locates any concept word (it doesn't have to be in the prompt) and shows a segmentation. Per-word cross-attention covers SD 1.x/SDXL. Both only read activations, so the image doesn't change.
     *   **Token ablation:** leave one word out, re-render with the same seed and measure the change in DINOv3 (or DINOv2) feature space. This causal influence measure works for every model family.
+*   **Quantized models**: load any model in 8-bit or 4-bit (bitsandbytes), int8/fp8 (torchao) or from a GGUF denoiser file, chosen per render (**Precision** next to the model), so full precision and quantized can be compared side by side, also as an XYZ grid axis. LoRAs work on top. The Lab's **Quantization check** measures what it costs and changes: memory, speed, image differences (PSNR, SSIM, DINO features relative to a seed change) and whether Lab analyses still agree.
 *   **Memory modes** for small GPUs: full GPU, model offload, group offload with CUDA streams, sequential offload, picked automatically from model size and free VRAM.
 *   **Local LLM chat** (GGUF via llama.cpp) for prompt work.
 
@@ -67,7 +68,7 @@ The installer:
 3. installs GRADIENT (`pip install -e .`),
 4. builds the web UI (if Node.js is available).
 
-Options: `--cpu`, `--legacy-gpu`, `--with-llm` (adds llama-cpp-python, compiled locally), `--dev`, `--no-frontend` (PowerShell: `-Cpu`, `-LegacyGpu`, `-WithLlm`, `-Dev`, `-NoFrontend`).
+Options: `--cpu`, `--legacy-gpu`, `--with-llm` (adds llama-cpp-python, compiled locally), `--with-quant` (quantization backends: bitsandbytes, torchao, gguf), `--dev`, `--no-frontend` (PowerShell: `-Cpu`, `-LegacyGpu`, `-WithLlm`, `-WithQuant`, `-Dev`, `-NoFrontend`).
 
 ### Updating
 

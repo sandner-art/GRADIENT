@@ -136,6 +136,7 @@ describe('settingsFrom', () => {
 		seed: 42,
 		guidance_scale: '7->3',
 		loras: [{ name: 'ink', weight: 0.7 }],
+		quantization: 'bnb-4bit',
 		run_type: 'text_to_image'
 	};
 	it('copies form settings and drops scheduled CFG strings', () => {
@@ -144,6 +145,7 @@ describe('settingsFrom', () => {
 			model_id: 'sd15',
 			prompt: 'a cat',
 			loras: [{ name: 'ink', weight: 0.7 }],
+			quantization: 'bnb-4bit',
 			seed: null
 		});
 	});

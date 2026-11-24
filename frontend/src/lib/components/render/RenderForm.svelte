@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import { get } from '#lib/apiClient.js';
+	import QuantizationSelect from '#lib/components/shared/QuantizationSelect.svelte';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
 	import * as ui from '#lib/lab/ui.js';
 	import { rememberFormJobs, submitJob } from '#lib/stores/queue.svelte.js';
@@ -186,7 +187,9 @@
 			num_outputs: Number(s.num_outputs) || 1,
 			custom_sigmas: parseSigmas(sigmasText),
 			loras: loras.length ? loras : null,
-			embeddings: s.embeddings?.length ? s.embeddings : null
+			embeddings: s.embeddings?.length ? s.embeddings : null,
+			vae_id: s.vae_id || null,
+			quantization: s.quantization || null
 		};
 		if (mode === 'image') {
 			base.image_base64 = s.image_base64;
@@ -283,6 +286,11 @@
 					</div>
 				</div>
 			</div>
+			<QuantizationSelect
+				id="{mode}_quantization"
+				value={$store.quantization}
+				onchange={(v) => store.update((s) => ({ ...s, quantization: v }))}
+			/>
 			<RecommendedSettings
 				modelId={$store.model_id}
 				onapply={(d) =>

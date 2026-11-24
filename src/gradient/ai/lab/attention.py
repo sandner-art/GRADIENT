@@ -28,7 +28,11 @@ def attention_maps(request: AttentionMapRequest) -> AttentionMapResponse:
     result = generate_images(base, probes=[recorder])
     image = result.images[0]
     pipe, _ = get_pipeline(
-        base.model_id, vae_id=base.vae_id, loras=base.loras, embeddings=base.embeddings
+        base.model_id,
+        vae_id=base.vae_id,
+        loras=base.loras,
+        embeddings=base.embeddings,
+        quantization=base.quantization,
     )
 
     f = getattr(pipe, "vae_scale_factor", 8)

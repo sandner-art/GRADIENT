@@ -91,7 +91,11 @@ def token_ablation(request: AblationRequest) -> AblationResponse:
     fm, note = load_feature_model(request.feature_model)
     base_image = generate_images(base).images[0]
     pipe, _ = get_pipeline(
-        base.model_id, vae_id=base.vae_id, loras=base.loras, embeddings=base.embeddings
+        base.model_id,
+        vae_id=base.vae_id,
+        loras=base.loras,
+        embeddings=base.embeddings,
+        quantization=base.quantization,
     )
     positions = (
         {w.lower(): p for w, p in word_token_positions(pipe.tokenizer, base.prompt)}

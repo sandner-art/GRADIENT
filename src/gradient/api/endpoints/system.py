@@ -37,8 +37,21 @@ def _pkg_version(name: str) -> str | None:
 # --- Model lists (names usable as model_id / lora name etc.) ---
 @router.get("/system/models/diffusion", response_model=list[str], tags=["System Info"])
 async def get_diffusion_models():
-    """Diffusion models (diffusers folders and single-file checkpoints) in the model folders."""
-    return sorted(set(list_model_names("diffusers")) | set(list_model_names("checkpoints")))
+    """Diffusion models (diffusers folders and single-file checkpoints) in the model folders.
+
+    GGUF files are denoiser weights for quantized loading (GET /system/quantization), not
+    models of their own, so they are left out."""
+    checkpoints = {n for n in list_model_names("checkpoints") if not n.lower().endswith(".gguf")}
+    return sorted(set(list_model_names("diffusers")) | checkpoints)
+
+
+@router.get("/system/quantization", tags=["System Info"])
+async def get_quantization_options():
+    """Quantizations a model can be loaded with (request field `quantization`), with whether
+    each works on this machine (backend installed, GPU needed) and GGUF denoiser files found."""
+    from gradient.ai.diffusion import quantization
+
+    return {"options": quantization.options()}
 
 
 @router.get("/system/models/loras", response_model=list[str], tags=["System Info"])

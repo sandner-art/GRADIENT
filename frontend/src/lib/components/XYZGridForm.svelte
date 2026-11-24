@@ -61,7 +61,8 @@
 		'width',
 		'height',
 		'scheduler_id',
-		'model_id'
+		'model_id',
+		'quantization' // e.g. none, torchao-int8, bnb-4bit: compare precision side by side
 		// TODO: Add 'strength' if allowing Img2Img base params? Needs careful handling.
 		// TODO: Add LoRA weights, ControlNet weights, VAE etc. later
 	];

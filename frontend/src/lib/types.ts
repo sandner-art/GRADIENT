@@ -21,6 +21,8 @@ export interface DiffusionTaskBase {
 	loras?: LoRAParameter[] | null;
 	embeddings?: string[] | null;
 	vae_id?: string | null;
+	/** none, bnb-8bit, bnb-4bit, torchao-int8, torchao-int8-dynamic, torchao-fp8, gguf:<file>; '+text' also quantizes text encoders */
+	quantization?: string | null;
 	modulation?: ModulationLane[] | null;
 	// vae_id?: string | null; // Add when ready
 }
@@ -525,3 +527,46 @@ export interface GalleryFilter {
 	sort?: 'newest' | 'oldest' | 'rating';
 }
 // --- Gallery --- ^^^
+
+/** A way to load a model (GET /system/quantization). */
+export interface QuantOption {
+	value: string;
+	label: string;
+	about: string;
+	backend: string | null;
+	available: boolean;
+	reason: string | null;
+}
+
+export interface QuantVariantReport {
+	quantization: string;
+	label: string;
+	error: string | null;
+	weights_mb: Record<string, number>;
+	denoiser_mb: number | null;
+	load_seconds: number | null;
+	seconds_per_image: number | null;
+	peak_memory_mb: number | null;
+	psnr: number | null;
+	ssim: number | null;
+	mean_abs_diff: number | null;
+	feature_distance: number | null;
+	relative_change: number | null;
+	taylor_cosine: number | null;
+	taylor_method: string | null;
+	verdict: string;
+	strip_base64: string | null;
+}
+
+export interface QuantReportResponse {
+	model_id: string;
+	seeds: number[];
+	reference: string;
+	seed_spread: number | null;
+	feature_model: string | null;
+	feature_note: string | null;
+	variants: QuantVariantReport[];
+	image_base64: string;
+	summary: string;
+	performance_ms: number;
+}

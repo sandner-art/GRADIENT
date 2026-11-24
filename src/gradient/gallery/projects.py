@@ -72,6 +72,7 @@ RUN_TYPE_KEYWORDS = {
     "lab_attention": "Lab attention",
     "lab_concept_attention": "Lab ConceptAttention",
     "lab_token_ablation": "Lab ablation",
+    "lab_quantization": "Lab quantization",
 }
 
 _RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"

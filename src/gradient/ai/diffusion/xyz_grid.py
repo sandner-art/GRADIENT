@@ -120,12 +120,14 @@ async def run_xyz_grid(request: XYZGridRequest, run_uuid: str | None = None) -> 
     if "seed" not in axis_params and base_params_dict.get("seed") is None:
         base_params_dict["seed"] = resolve_seed(None)
 
-    # Generate all cells of one model before switching models (avoids reloading a model per
-    # cell); results are put back into the original grid order afterwards.
+    # Generate all cells of one loaded model before switching (a model, VAE or quantization
+    # change reloads it); results are put back into the original grid order afterwards.
     order = list(range(len(value_combinations)))
-    if "model_id" in axis_params:
-        model_pos = axis_params.index("model_id")
-        order.sort(key=lambda idx: str(value_combinations[idx][model_pos]))
+    load_axes = [
+        axis_params.index(p) for p in ("model_id", "vae_id", "quantization") if p in axis_params
+    ]
+    if load_axes:
+        order.sort(key=lambda idx: tuple(str(value_combinations[idx][p]) for p in load_axes))
     cell_results: dict[int, XYZGridResult] = {}
 
     try:

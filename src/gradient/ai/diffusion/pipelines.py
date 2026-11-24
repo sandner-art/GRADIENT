@@ -137,6 +137,7 @@ def generate_images(
         vae_id=request.vae_id,
         loras=request.loras,
         embeddings=request.embeddings,
+        quantization=request.quantization,
     )
     call_signature = inspect.signature(pipe.__call__).parameters
     call_params = set(call_signature)
@@ -146,6 +147,7 @@ def generate_images(
         family=entry.family,
         memory_mode=entry.memory_mode,
         dtype=str(entry.dtype).removeprefix("torch."),
+        quantization=entry.quantization,  # the resolved one (the model's default if unset)
     )
 
     params["scheduler_id"] = _set_scheduler(pipe, entry, request.scheduler_id)

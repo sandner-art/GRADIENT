@@ -20,10 +20,13 @@ from gradient.ai.lab.models import (
     AttentionMapResponse,
     ConceptAttentionRequest,
     ConceptAttentionResponse,
+    QuantReportRequest,
+    QuantReportResponse,
     TaylorRequest,
     TaylorResponse,
 )
 from gradient.ai.lab.probes import attention_layers
+from gradient.ai.lab.quant_report import quantization_report
 from gradient.ai.lab.taylor import taylor_preview
 from gradient.api.job_kinds import label_for, register_lab_kind
 from gradient.core.jobs import PRIORITY_INTERACTIVE, job_queue
@@ -39,11 +42,25 @@ TAYLOR = register_lab_kind("taylor", taylor_preview, TaylorRequest)
 ATTENTION = register_lab_kind("attention", attention_maps, AttentionMapRequest)
 CONCEPTS = register_lab_kind("concept_attention", concept_attention_maps, ConceptAttentionRequest)
 ABLATION = register_lab_kind("token_ablation", token_ablation, AblationRequest)
+QUANTIZATION = register_lab_kind("quantization", quantization_report, QuantReportRequest)
 
 
-async def _run_lab(kind: str, request):
+async def _run_lab(kind: str, request, priority: int = PRIORITY_INTERACTIVE):
     payload = request.model_dump(mode="json")
-    return await job_queue.run(kind, payload, label_for(kind, payload), PRIORITY_INTERACTIVE)
+    return await job_queue.run(kind, payload, label_for(kind, payload), priority)
+
+
+@router.post(
+    "/lab/quantization-report",
+    response_model=QuantReportResponse,
+    summary="Render with full precision and quantized variants; compare images and analyses",
+)
+async def handle_quantization_report(request: QuantReportRequest = Body(...)):
+    try:
+        # long: waits its turn like a render instead of jumping the queue
+        return await _run_lab(QUANTIZATION, request, priority=0)
+    except Exception as e:
+        raise to_http_error(e, "quantization report") from e
 
 
 @router.post(

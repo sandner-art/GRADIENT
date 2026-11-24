@@ -31,6 +31,7 @@ from gradient.core.families import family_from_class  # noqa: F401  (re-exported
 from gradient.core.resource_manager import resource_manager
 from gradient.model_manager.inventory import dir_size, find_model_path, get_manifest_meta
 
+from . import quantization as quant
 from .loading_embeddings import load_textual_inversions
 from .loading_loras import activate_loras
 
@@ -81,6 +82,7 @@ class LoadedPipeline:
     active_adapters: list[str] = field(default_factory=list)
     lora_disabled: bool = False
     unmatched: set[str] = field(default_factory=set)
+    quantization: str = "none"
     # live previews: fitted latent->RGB projection, False when this model can't preview
     preview_projection: Any = None
 
@@ -291,13 +293,28 @@ def _load_vae(vae_id: str, dtype: torch.dtype) -> AutoencoderKL:
     return AutoencoderKL.from_pretrained(str(path) if path else vae_id, dtype=dtype)
 
 
-def _pipeline_key(model_id: str, vae_id: str | None) -> str:
-    return f"{model_id}|vae={vae_id or ''}"
+def _pipeline_key(model_id: str, vae_id: str | None, quantization: str = "none") -> str:
+    key = f"{model_id}|vae={vae_id or ''}"
+    return key if quantization == "none" else f"{key}|q={quantization}"
 
 
-def _load_base(model_id: str, vae_id: str | None) -> LoadedPipeline:
+def resolve_quantization(model_id: str, quantization: str | None) -> quant.QuantSpec:
+    """The request's quantization, else the model's (manifest), else the setting's default."""
+    if quantization:
+        return quant.parse(quantization)
+    try:
+        meta = resolve_model_source(model_id).manifest
+    except ValueError:
+        meta = {}
+    return quant.parse(meta.get("quantization"))
+
+
+def _load_base(
+    model_id: str, vae_id: str | None, spec: quant.QuantSpec | None = None
+) -> LoadedPipeline:
     import diffusers
 
+    spec = spec or quant.parse("none")
     source = resolve_model_source(model_id)
     dtype = default_dtype(source.pipeline_class)
     if source.manifest.get("torch_dtype") in ("float16", "bfloat16") and get_device().type != "cpu":
@@ -312,18 +329,23 @@ def _load_base(model_id: str, vae_id: str | None) -> LoadedPipeline:
     if vae_id:
         load_args["vae"] = _load_vae(vae_id, dtype)
     logger.info(
-        "Loading %s (%s, %s) from %s",
+        "Loading %s (%s, %s%s) from %s",
         model_id,
         source.pipeline_class or "auto",
         dtype,
+        "" if spec.name == "none" else f", {spec.key}",
         source.load_path,
     )
     if source.single_file:
+        if spec.name == "gguf" or spec.backend == "bitsandbytes":
+            quant.quantize_in_place(None, spec)  # raises with the explanation
         cls = getattr(diffusers, source.pipeline_class or "StableDiffusionPipeline")
         pipe = cls.from_single_file(source.load_path, **load_args)
+        quant.quantize_in_place(pipe, spec)
     else:
         if source.variant:
             load_args["variant"] = source.variant
+        load_args.update(quant.load_args(spec, source.load_path, dtype))
         pipe = DiffusionPipeline.from_pretrained(source.load_path, **load_args)
 
     if hasattr(pipe, "safety_checker") and getattr(pipe, "safety_checker", None) is not None:
@@ -331,10 +353,14 @@ def _load_base(model_id: str, vae_id: str | None) -> LoadedPipeline:
     if hasattr(pipe, "set_progress_bar_config"):
         pipe.set_progress_bar_config(disable=True)
 
-    mode = apply_memory_mode(pipe, choose_memory_mode(source.size_bytes))
+    size = int(source.size_bytes * spec.factor) if source.size_bytes else None
+    mode = choose_memory_mode(size)
+    if spec.backend == "bitsandbytes" and mode in ("low", "minimal"):
+        mode = "balanced"  # bitsandbytes weights don't support group/sequential offloading
+    mode = apply_memory_mode(pipe, mode)
     _apply_attention_backend(pipe)
     pipeline_class = type(pipe).__name__
-    key = _pipeline_key(model_id, vae_id)
+    key = _pipeline_key(model_id, vae_id, spec.key)
     entry = LoadedPipeline(
         key=key,
         model_id=model_id,
@@ -344,11 +370,12 @@ def _load_base(model_id: str, vae_id: str | None) -> LoadedPipeline:
         dtype=dtype,
         memory_mode=mode,
         vae_id=vae_id,
+        quantization=spec.key,
         default_scheduler_config=dict(pipe.scheduler.config)
         if getattr(pipe, "scheduler", None)
         else None,
     )
-    vram_mb = int(source.size_bytes / 1024**2) if (source.size_bytes and mode == "gpu") else 0
+    vram_mb = int(size / 1024**2) if (size and mode == "gpu") else 0
     resource_manager.register(key, f"pipeline:{entry.family}", vram_mb, unload=_async_unloader(key))
     logger.info(
         "Loaded %s as %s (family=%s, memory_mode=%s)", model_id, pipeline_class, entry.family, mode
@@ -399,15 +426,19 @@ def unload_model(model_id: str) -> int:
 
 
 def get_loaded_entry(
-    model_id: str, vae_id: str | None = None, force_reload: bool = False
+    model_id: str,
+    vae_id: str | None = None,
+    force_reload: bool = False,
+    quantization: str | None = None,
 ) -> LoadedPipeline:
-    key = _pipeline_key(model_id, vae_id)
+    spec = resolve_quantization(model_id, quantization)
+    key = _pipeline_key(model_id, vae_id, spec.key)
     with _cache_lock:
         if force_reload and key in loaded_pipelines:
             _unload_entry(key)
         entry = loaded_pipelines.get(key)
         if entry is None:
-            entry = _load_base(model_id, vae_id)
+            entry = _load_base(model_id, vae_id, spec)
             loaded_pipelines[key] = entry
         loaded_pipelines.move_to_end(key)
     resource_manager.update_usage(key)
@@ -420,9 +451,10 @@ def get_pipeline(
     vae_id: str | None = None,
     loras: list | None = None,
     embeddings: list[str] | None = None,
+    quantization: str | None = None,
 ) -> tuple[DiffusionPipeline, LoadedPipeline]:
     """Return a ready-to-call pipeline for `task` ('text2image' or 'image2image')."""
-    entry = get_loaded_entry(model_id, vae_id)
+    entry = get_loaded_entry(model_id, vae_id, quantization=quantization)
     if task == "text2image":
         pipe = entry.pipeline
     elif task == "image2image":
@@ -466,6 +498,7 @@ def loaded_summary() -> list[dict[str, Any]]:
             "family": e.family,
             "dtype": str(e.dtype).removeprefix("torch."),
             "memory_mode": e.memory_mode,
+            "quantization": e.quantization,
             "vae_id": e.vae_id,
             "loras": [name for name, _ in e.lora_signature],
             "derived": list(e.derived),

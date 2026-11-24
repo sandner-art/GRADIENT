@@ -98,3 +98,34 @@ def client():
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(scope="session")
+def tiny_vision(workspace):
+    """Tiny random DINOv2 and DINOv3 encoders in the vision folder."""
+    import torch
+    from transformers import Dinov2Config, Dinov2Model, DINOv3ViTConfig, DINOv3ViTModel
+
+    root = workspace / "models" / "vision"
+    torch.manual_seed(0)
+    Dinov2Model(
+        Dinov2Config(
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=64,
+            patch_size=14,
+            image_size=56,
+        )
+    ).save_pretrained(root / "dinov2-tiny")
+    DINOv3ViTModel(
+        DINOv3ViTConfig(
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            intermediate_size=64,
+            patch_size=16,
+            num_register_tokens=4,
+        )
+    ).save_pretrained(root / "dinov3-tiny")
+    return ["dinov2-tiny", "dinov3-tiny"]

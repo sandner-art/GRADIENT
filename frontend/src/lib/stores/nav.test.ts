@@ -38,6 +38,7 @@ describe('sendToLab', () => {
 			num_inference_steps: 30,
 			guidance_scale: 'linear(9,3)',
 			seed: 42,
+			quantization: 'torchao-int8',
 			loras: [
 				{ name: 'ink.safetensors', weight: 0.6 },
 				{ name: 'paper.safetensors', weight: 1 }
@@ -52,7 +53,8 @@ describe('sendToLab', () => {
 			num_inference_steps: 30,
 			seed: 42,
 			lora: 'ink.safetensors',
-			lora_weight: 0.6
+			lora_weight: 0.6,
+			quantization: 'torchao-int8'
 		});
 		expect(typeof lab.base.guidance_scale).toBe('number');
 		expect(ui.toasts.at(-1)?.text).toContain('one LoRA');

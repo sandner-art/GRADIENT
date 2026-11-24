@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0 (2026-11-24)
+
+### Quantized models
+- **Precision** per render (`quantization` on every request; selector next to the model in the render forms and the Lab): bitsandbytes 8-bit / 4-bit NF4 (CUDA), torchao int8 weight-only, int8 dynamic and fp8 weight-only, or a **GGUF** denoiser file with the rest of the pipeline from the selected model. `+text` also quantizes the text encoders. Diffusers-format models are quantized while loading; single-file checkpoints are quantized in place with torchao.
+- The precision is part of the loaded pipeline's identity (switching reloads), shapes the memory-mode choice, is recorded in each image's settings and PNG metadata (`Quantization: …`) and restored by *Use settings*.
+- `quantization` works as an **XYZ grid axis**; cells are grouped so each precision loads once.
+- LoRAs load on top of quantized models; the exact Taylor JVP runs through torchao and GGUF weights.
+- Unavailable options say why (backend not installed, needs an NVIDIA GPU). GGUF files in the checkpoints folder are offered as precisions and no longer listed as models.
+
+### Lab: Quantization check
+- Renders the Lab settings with the reference and up to four precisions on the same seeds and reports weight sizes, load time, seconds per image, peak GPU memory, PSNR, SSIM, DINO feature distance, **relative change** (feature distance divided by the distance between two reference seeds) and the **Taylor tangent agreement** with the reference, with a verdict per precision, reference | quantized | difference strips and an overview grid. Saved to the gallery as a Lab run.
+
+### Install
+- `install.ps1 -WithQuant` / `./install.sh --with-quant` (also forwarded by the update scripts) install bitsandbytes, torchao and gguf.
+- New setting `performance.default_quantization` (default `none`).
+
+### API
+- `quantization` on generation and Lab requests; `GET /system/quantization`; `POST /lab/quantization-report`.
+
+### Tests
+- Spec parsing, availability, torchao renders with LoRA and exact JVP, a GGUF denoiser built from the test model, quantized weight sizes, and the full report.
+
 ## 0.7.0 (2026-11-24)
 
 ### Rendering

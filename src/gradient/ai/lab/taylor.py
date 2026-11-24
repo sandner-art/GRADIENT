@@ -31,19 +31,22 @@ def _encode_tangent(tangent: np.ndarray) -> tuple[Image.Image, float]:
     return Image.fromarray(q, "RGB"), scale
 
 
-def taylor_preview(request: TaylorRequest) -> TaylorResponse:
-    """Blocking; run through run_gpu_task."""
-    start = time.time()
-    base = request.base_request.model_copy(deep=True)
-    base.seed = resolve_seed(base.seed)
+def compute_tangent(
+    base, method: str = "auto", delta: float | None = None
+) -> tuple[Image.Image, np.ndarray, str, str | None]:
+    """(image, ∂image/∂w as float RGB, method used, note). Blocking."""
     if not isinstance(base.guidance_scale, (int, float)):
         raise ValueError("Taylor preview needs a constant guidance_scale")
     w = float(base.guidance_scale)
 
     pipe, entry = get_pipeline(
-        base.model_id, vae_id=base.vae_id, loras=base.loras, embeddings=base.embeddings
+        base.model_id,
+        vae_id=base.vae_id,
+        loras=base.loras,
+        embeddings=base.embeddings,
+        quantization=base.quantization,
     )
-    method = request.method
+    requested = method
     if method == "auto":
         method = "jvp" if unet_sampler.supports(pipe) else "finite_difference"
     if method == "jvp" and not unet_sampler.supports(pipe):
@@ -59,7 +62,7 @@ def taylor_preview(request: TaylorRequest) -> TaylorResponse:
         try:
             image_t, tangent_t = unet_sampler.guidance_jvp(pipe, base, base.seed)
         except RuntimeError as e:
-            if request.method != "auto":
+            if requested != "auto":
                 raise RuntimeError(
                     f"Exact JVP failed for {entry.model_id} ({entry.dtype}, memory mode "
                     f"{entry.memory_mode}): {e}. Try 'finite_difference'."
@@ -81,13 +84,23 @@ def taylor_preview(request: TaylorRequest) -> TaylorResponse:
         tangent = tangent_t.numpy()
         base_img = Image.fromarray((image * 255).round().astype(np.uint8), "RGB")
     else:
-        delta = request.delta or 0.5
+        delta = delta or 0.5
         lo = base.model_copy(update={"guidance_scale": max(0.0, w - delta)})
         hi = base.model_copy(update={"guidance_scale": w + delta})
         base_img = generate_images(base).images[0]
         img_lo = pil_to_array(generate_images(lo).images[0])
         img_hi = pil_to_array(generate_images(hi).images[0])
         tangent = (img_hi - img_lo) / (w + delta - max(0.0, w - delta))
+    return base_img, tangent, method, note
+
+
+def taylor_preview(request: TaylorRequest) -> TaylorResponse:
+    """Blocking; run through run_gpu_task."""
+    start = time.time()
+    base = request.base_request.model_copy(deep=True)
+    base.seed = resolve_seed(base.seed)
+    base_img, tangent, method, note = compute_tangent(base, request.method, request.delta)
+    w = float(base.guidance_scale)
 
     tangent_img, scale = _encode_tangent(tangent)
     magnitude = np.abs(tangent).mean(axis=-1)

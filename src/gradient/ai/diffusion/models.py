@@ -92,6 +92,14 @@ class DiffusionTaskBase(BaseModel):
     vae_id: str | None = Field(
         default=None, description="Optional VAE override (name in the vae folder or Hub id)"
     )
+    quantization: str | None = Field(
+        default=None,
+        description=(
+            "Load the model quantized: none, bnb-8bit, bnb-4bit, torchao-int8, "
+            "torchao-int8-dynamic, torchao-fp8 or gguf:<file>; add '+text' to quantize the text "
+            "encoders too. Empty: the model's default (usually none). See GET /system/quantization."
+        ),
+    )
 
     custom_sigmas: list[float] | None = Field(
         default=None,

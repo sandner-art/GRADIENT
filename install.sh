@@ -5,6 +5,7 @@
 #   ./install.sh --cpu           force a CPU-only PyTorch
 #   ./install.sh --legacy-gpu    NVIDIA Maxwell/Pascal/Volta (GTX 9xx/10xx, Titan V): PyTorch 2.14 + CUDA 12.6
 #   ./install.sh --with-llm      also install llama-cpp-python (GGUF chat; compiles, needs a C++ toolchain)
+#   ./install.sh --with-quant    also install quantization backends (bitsandbytes, torchao, gguf)
 #   ./install.sh --dev           also install test/lint tools
 #   ./install.sh --no-frontend   skip building the web UI
 #
@@ -23,6 +24,7 @@ for arg in "$@"; do
     --cpu) MODE=cpu ;;
     --legacy-gpu) MODE=legacy ;;
     --with-llm) EXTRAS="${EXTRAS:+$EXTRAS,}llm" ;;
+    --with-quant) EXTRAS="${EXTRAS:+$EXTRAS,}quant" ;;
     --dev) EXTRAS="${EXTRAS:+$EXTRAS,}dev" ;;
     --no-frontend) BUILD_FRONTEND=0 ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;

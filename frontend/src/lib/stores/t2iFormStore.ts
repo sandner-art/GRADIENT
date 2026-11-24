@@ -12,6 +12,7 @@ export const t2iDefaultState: Text2ImageRequest = {
     guidance_scale: 7.0,
     seed: null,
     scheduler_id: null,
+    quantization: null,
     num_outputs: 1,
     custom_sigmas: null
 };

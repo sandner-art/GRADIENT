@@ -13,6 +13,8 @@ export interface LabBase {
 	guidance_scale: number;
 	seed: number | null;
 	scheduler_id: string | null;
+	/** load the model quantized (see GET /system/quantization); null: the model's default */
+	quantization: string | null;
 	lora: string | null;
 	lora_weight: number;
 }
@@ -28,6 +30,7 @@ export const lab = $state<{ base: LabBase; lanes: ModulationLane[]; busy: string
 		guidance_scale: 7,
 		seed: 1234,
 		scheduler_id: null,
+		quantization: null,
 		lora: null,
 		lora_weight: 1
 	},
@@ -63,6 +66,7 @@ export function baseRequest(overrides: Partial<Text2ImageRequest> = {}): Text2Im
 		guidance_scale: b.guidance_scale,
 		seed: b.seed,
 		scheduler_id: b.scheduler_id,
+		quantization: b.quantization,
 		loras: b.lora ? [{ name: b.lora, weight: b.lora_weight }] : null,
 		num_outputs: 1,
 		...overrides

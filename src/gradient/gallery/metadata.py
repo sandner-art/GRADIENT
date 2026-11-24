@@ -68,6 +68,8 @@ def a1111_parameters(params: dict[str, Any]) -> str:
         fields.append(("Denoising strength", params["strength"]))
     if params.get("family"):
         fields.append(("Model family", params["family"]))
+    if params.get("quantization") not in (None, "", "none"):
+        fields.append(("Quantization", params["quantization"]))
     fields.append(("Version", f"GRADIENT {_version()}"))
     lines.append(", ".join(f"{k}: {_clean(v)}" for k, v in fields if v is not None and v != ""))
     return "\n".join(lines)
