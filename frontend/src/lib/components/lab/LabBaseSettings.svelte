@@ -147,6 +147,7 @@
 			<div class="sm:col-span-2">
 				<QuantizationSelect
 					id="lab_quantization"
+					modelId={b.model_id || null}
 					value={b.quantization}
 					onchange={(v) => (b.quantization = v)}
 				/>

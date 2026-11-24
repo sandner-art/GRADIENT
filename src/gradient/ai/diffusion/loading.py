@@ -28,7 +28,7 @@ from diffusers import AutoencoderKL, AutoPipelineForImage2Image, DiffusionPipeli
 
 from gradient.core.config import get_setting
 from gradient.core.device import default_dtype, empty_cache, free_vram_bytes, get_device
-from gradient.core.families import family_from_class  # noqa: F401  (re-exported)
+from gradient.core.families import family_from_class
 from gradient.core.resource_manager import resource_manager
 from gradient.model_manager.inventory import dir_size, find_model_path, get_manifest_meta
 
@@ -299,15 +299,50 @@ def _pipeline_key(model_id: str, vae_id: str | None, quantization: str = "none")
     return key if quantization == "none" else f"{key}|q={quantization}"
 
 
+def model_profile(model_id: str) -> tuple[str | None, bool]:
+    """(family, single_file) of a model without loading it; (None, False) if unknown."""
+    try:
+        source = resolve_model_source(model_id)
+    except ValueError:
+        return None, False
+    family = source.manifest.get("family") or (
+        family_from_class(source.pipeline_class) if source.pipeline_class else None
+    )
+    return family, source.single_file
+
+
 def resolve_quantization(model_id: str, quantization: str | None) -> quant.QuantSpec:
-    """The request's quantization, else the model's (manifest), else the setting's default."""
+    """The request's precision; else the model's (manifest), else the setting's default.
+
+    A precision the request asks for is used as asked (a misfit is reported when loading).
+    A *default* that can't be used for this model here (backend missing, no GPU, a GGUF
+    for another model, bitsandbytes on a single file) falls back to full precision."""
     if quantization:
         return quant.parse(quantization)
     try:
         meta = resolve_model_source(model_id).manifest
     except ValueError:
         meta = {}
-    return quant.parse(meta.get("quantization"))
+    default = meta.get("quantization")
+    source = "the model's default" if default else "performance.default_quantization"
+    try:
+        spec = quant.parse(default)
+    except ValueError as e:
+        logger.warning("Ignoring %s for %s (%s); using full precision", source, model_id, e)
+        return quant.parse("none")
+    if spec.name != "none":
+        family, single_file = model_profile(model_id)
+        problem = quant.fit_problem(spec, family, single_file)
+        if problem:
+            logger.warning(
+                "%s (%s) can't be used for %s: %s; using full precision",
+                source.capitalize() if source[0].islower() else source,
+                spec.key,
+                model_id,
+                problem,
+            )
+            return quant.parse("none")
+    return spec
 
 
 def _load_base(
@@ -337,9 +372,13 @@ def _load_base(
         "" if spec.name == "none" else f", {spec.key}",
         source.load_path,
     )
+    family = source.manifest.get("family") or (
+        family_from_class(source.pipeline_class) if source.pipeline_class else None
+    )
+    problem = quant.fit_problem(spec, family, source.single_file)
+    if problem:
+        raise ValueError(f"Can't load {model_id} with {spec.key}: {problem}")
     if source.single_file:
-        if spec.name == "gguf" or spec.backend == "bitsandbytes":
-            quant.quantize_in_place(None, spec)  # raises with the explanation
         cls = getattr(diffusers, source.pipeline_class or "StableDiffusionPipeline")
         load_args.update(_without_safety_checker(cls))
         with _quiet_hub():  # it fetches the model's config files (cached after the first time)

@@ -288,6 +288,7 @@
 			</div>
 			<QuantizationSelect
 				id="{mode}_quantization"
+				modelId={$store.model_id || null}
 				value={$store.quantization}
 				onchange={(v) => store.update((s) => ({ ...s, quantization: v }))}
 			/>

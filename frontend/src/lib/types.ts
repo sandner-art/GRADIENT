@@ -537,6 +537,8 @@ export interface QuantOption {
 	backend: string | null;
 	available: boolean;
 	reason: string | null;
+	/** a few words for a disabled option ("other model", "needs GPU", ...) */
+	short?: string | null;
 }
 
 export interface QuantVariantReport {

@@ -49,12 +49,18 @@ async def get_diffusion_models():
 
 
 @router.get("/system/quantization", tags=["System Info"])
-async def get_quantization_options():
-    """Quantizations a model can be loaded with (request field `quantization`), with whether
-    each works on this machine (backend installed, GPU needed) and GGUF denoiser files found."""
+async def get_quantization_options(model_id: str | None = None):
+    """Precisions a model can be loaded with (request field `quantization`): whether each
+    works on this machine (backend installed, GPU) and, with `model_id`, for that model (a GGUF
+    for another model family, bitsandbytes on a single-file checkpoint), with the reason."""
     from gradient.ai.diffusion import quantization
 
-    return {"options": quantization.options()}
+    family, single_file = loading.model_profile(model_id) if model_id else (None, False)
+    return {
+        "model_family": family,
+        "single_file": single_file,
+        "options": quantization.options(family, single_file),
+    }
 
 
 @router.get("/system/models/loras", response_model=list[str], tags=["System Info"])

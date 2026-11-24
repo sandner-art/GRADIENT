@@ -180,14 +180,18 @@ def test_second_ctrl_c_stops_at_once(monkeypatch, stopping):
 
     import uvicorn
 
-    from gradient import cli
+    from gradient.api import server as srv
 
     exits = []
-    monkeypatch.setattr(cli.os, "_exit", exits.append)
-    server = cli._graceful_server(uvicorn.Config("gradient.api.main:app"))
-    server.handle_exit(signal.SIGINT, None)
+    monkeypatch.setattr(srv.os, "_exit", exits.append)
+    monkeypatch.setattr(srv, "_interrupts", 0)
+    server = srv.GracefulServer(uvicorn.Config("gradient.api.main:app"))
+    server.handle_exit(signal.SIGTERM, None)  # the reloader's SIGTERM: graceful, not counted
     assert stopping.requested() and server.should_exit and exits == []
-    server.handle_exit(signal.SIGINT, None)
+    assert server._captured_signals == []  # nothing is raised again after the stop
+    server.handle_exit(signal.SIGINT, None)  # the first Ctrl+C
+    assert exits == []
+    server.handle_exit(signal.SIGINT, None)  # the second: at once
     assert exits == [0]
 
 
@@ -219,23 +223,24 @@ def test_stop_endpoint(client, monkeypatch, stopping):
 
 
 def test_windows_console_events(monkeypatch, stopping):
-    from gradient import cli
+    from gradient.api import server as cli
 
     exits = []
     monkeypatch.setattr(cli.os, "_exit", exits.append)
+    monkeypatch.setattr(cli, "_interrupts", 0)
     fake = _FakeServer()
     stopping.attach(fake)
     try:
-        assert cli._on_console_event(5) is False  # log-off: Windows' default handling
-        assert cli._on_console_event(0) is True  # Ctrl+C: graceful
+        assert cli.on_console_event(5) is False  # log-off: Windows' default handling
+        assert cli.on_console_event(0) is True  # Ctrl+C: graceful
         assert fake.should_exit and stopping.requested() and exits == []
-        assert cli._on_console_event(0) is True and exits == [0]  # again: at once
+        assert cli.on_console_event(0) is True and exits == [0]  # again: at once
         stopping.detach()  # the server has finished: a console close returns right away
         started = time.time()
-        assert cli._on_console_event(2) is True and time.time() - started < 1
+        assert cli.on_console_event(2) is True and time.time() - started < 1
     finally:
         stopping.detach()
-    assert cli._install_windows_console_handler() is None  # not Windows here: nothing to do
+    assert cli.install_windows_console_handler() is None  # not Windows here: nothing to do
 
 
 def test_gradient_stop_without_a_server(capsys):

@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { get, post } from '#lib/apiClient.js';
 	import { quantOptions } from '#lib/components/shared/QuantizationSelect.svelte';
-	import { baseProblem, baseRequest, runLabJob } from '#lib/lab/labState.svelte.js';
+	import { baseProblem, baseRequest, lab, runLabJob } from '#lib/lab/labState.svelte.js';
 	import * as ui from '#lib/lab/ui.js';
 	import type { LocalModel, QuantOption, QuantReportResponse } from '#lib/types.js';
 	import { apiErrorMessage } from '#lib/utils/format.js';
@@ -21,10 +21,24 @@
 	let error = $state<string | null>(null);
 	let open = $state<string | null>(null);
 
+	// the precisions that fit the Lab's model (re-checked when it changes)
+	$effect(() => {
+		const model = lab.base.model_id || null;
+		let stale = false;
+		quantOptions(true, model).then((opts) => {
+			if (stale) return;
+			options = opts;
+			const usable = new Set(opts.filter((o) => o.available).map((o) => o.value));
+			picked = picked.filter((v) => usable.has(v));
+			const first = opts.find((o) => o.available && o.value !== 'none');
+			if (!picked.length && first) picked = [first.value];
+		});
+		return () => {
+			stale = true;
+		};
+	});
+
 	onMount(async () => {
-		options = await quantOptions(true);
-		const first = options.find((o) => o.available && o.value !== 'none');
-		if (first) picked = [first.value];
 		try {
 			visionModels = (await get<LocalModel[]>('/models/local?type=vision')).map((m) => m.name);
 		} catch {
@@ -107,7 +121,7 @@
 						/>
 						<span
 							>{o.label}{#if !o.available}<span class="text-xs text-gray-500">
-									· {o.reason?.includes('GPU') ? 'needs an NVIDIA GPU' : 'not installed'}</span
+									· {o.short ?? 'not available'}</span
 								>{/if}</span
 						>
 					</label>

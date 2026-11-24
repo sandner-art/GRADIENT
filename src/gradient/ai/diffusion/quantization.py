@@ -67,10 +67,41 @@ BUILTIN: dict[str, dict[str, Any]] = {
         "label": "fp8 weights (torchao)",
         "backend": "torchao",
         "factor": 0.55,
-        "about": "float8 weight-only; best on GPUs with fp8 support (Ada/Hopper and newer).",
+        "about": "float8 weight-only; about half the memory. Faster only on GPUs with fp8 "
+        "(RTX 40xx, Ada/Hopper and newer); elsewhere it saves memory at the same speed.",
     },
 }
 PACKAGES = {"bitsandbytes": "bitsandbytes", "torchao": "torchao", "gguf": "gguf"}
+
+#: GGUF `general.architecture` (ComfyUI-GGUF / city96 files) → model families it fits.
+#: Unknown architectures aren't checked (the load reports a mismatch).
+GGUF_FITS: dict[str, set[str]] = {
+    "sd1": {"sd15"},
+    "sdxl": {"sdxl"},
+    "sd3": {"sd3"},
+    "flux": {"flux1", "chroma"},  # some Chroma GGUFs are tagged flux
+    "chroma": {"chroma"},
+    "flux2": {"flux2"},
+    "qwen_image": {"qwen-image"},
+    "hidream": {"hidream"},
+}
+NAMES = {
+    "sd1": "SD 1.5",
+    "sd15": "SD 1.5",
+    "sdxl": "SDXL",
+    "sd3": "SD 3.x",
+    "flux": "FLUX.1",
+    "flux1": "FLUX.1",
+    "flux2": "FLUX.2",
+    "chroma": "Chroma",
+    "qwen_image": "Qwen-Image",
+    "qwen-image": "Qwen-Image",
+    "hidream": "HiDream",
+    "z-image": "Z-Image",
+    "sana": "Sana",
+    "pixart": "PixArt",
+    "kolors": "Kolors",
+}
 
 
 @dataclass(frozen=True)
@@ -132,6 +163,77 @@ def unavailable_reason(spec: QuantSpec) -> str | None:
     return None
 
 
+_arch_cache: dict[tuple[str, float], str | None] = {}
+
+
+def gguf_architecture(file: str) -> str | None:
+    """The `general.architecture` of a GGUF denoiser file (read from its header, cached)."""
+    from gradient.model_manager.inventory import find_model_path
+
+    path = find_model_path(file, "checkpoints")
+    if path is None or not path.is_file():
+        return None
+    key = (str(path), path.stat().st_mtime)
+    if key not in _arch_cache:
+        arch = None
+        try:
+            from gguf import GGUFReader
+
+            reader = GGUFReader(str(path))
+            field = reader.fields.get("general.architecture")
+            if field is not None:
+                arch = bytes(field.parts[field.data[0]]).decode("utf-8", "replace").strip()
+            del reader  # release the memory map (Windows keeps the file locked otherwise)
+        except Exception as e:
+            logger.info("Could not read the GGUF header of %s: %s", path.name, e)
+        _arch_cache[key] = arch
+    return _arch_cache[key]
+
+
+def fit_problem(
+    spec: QuantSpec, family: str | None = None, single_file: bool = False
+) -> str | None:
+    """Why this precision can't be used for this model here (None if it can)."""
+    reason = unavailable_reason(spec)
+    if reason or spec.name == "none":
+        return reason
+    if single_file and spec.backend != "torchao":
+        return (
+            "needs a model folder (diffusers format); for a single-file checkpoint use a "
+            "torchao precision"
+        )
+    if spec.name == "gguf":
+        from gradient.model_manager.inventory import find_model_path
+
+        path = find_model_path(spec.gguf_file or "", "checkpoints")
+        if path is None or not path.is_file():
+            return f"{spec.gguf_file} not found in the checkpoints folder"
+        arch = gguf_architecture(spec.gguf_file or "")
+        fits = GGUF_FITS.get(arch or "")
+        if family and fits is not None and family not in fits:
+            return (
+                f"{spec.gguf_file} is a {NAMES.get(arch, arch)} GGUF; this model is "
+                f"{NAMES.get(family, family)}"
+            )
+    return None
+
+
+def short_reason(reason: str | None) -> str | None:
+    """A few words for a disabled option."""
+    if not reason:
+        return None
+    for needle, short in (
+        ("GGUF; this model", "other model"),
+        ("NVIDIA GPU", "needs GPU"),
+        ("install", "not installed"),
+        ("single-file", "needs a model folder"),
+        ("checkpoints folder", "file missing"),
+    ):
+        if needle in reason:
+            return short
+    return "not available"
+
+
 def gguf_files() -> list[str]:
     """GGUF denoiser files in the checkpoints folders (LLM GGUFs live in models/llm)."""
     from gradient.model_manager.inventory import list_model_names
@@ -139,31 +241,29 @@ def gguf_files() -> list[str]:
     return sorted(n for n in list_model_names("checkpoints") if n.lower().endswith(".gguf"))
 
 
-def options() -> list[dict[str, Any]]:
-    """Every quantization with availability, for the UI."""
+def options(family: str | None = None, single_file: bool = False) -> list[dict[str, Any]]:
+    """Every precision with whether it can be used (for this model, when given)."""
     out = []
-    for name, meta in BUILTIN.items():
-        spec = QuantSpec(name)
-        out.append(
-            {
-                "value": name,
-                "label": meta["label"],
-                "about": meta.get("about", ""),
-                "backend": meta["backend"],
-                "available": unavailable_reason(spec) is None,
-                "reason": unavailable_reason(spec),
-            }
-        )
-    gguf_reason = unavailable_reason(QuantSpec("gguf", gguf_file="x"))
+    specs = [
+        (QuantSpec(name), meta["label"], meta.get("about", "")) for name, meta in BUILTIN.items()
+    ]
     for f in gguf_files():
+        about = "Pre-quantized denoiser weights; the rest comes from the selected model."
+        arch = gguf_architecture(f)
+        if arch:
+            about = f"{NAMES.get(arch, arch)} denoiser weights (GGUF); the rest comes from the selected model."
+        specs.append((QuantSpec("gguf", gguf_file=f), f"GGUF: {f}", about))
+    for spec, label, about in specs:
+        reason = fit_problem(spec, family, single_file)
         out.append(
             {
-                "value": f"gguf:{f}",
-                "label": f"GGUF: {f}",
-                "about": "Pre-quantized denoiser weights; the rest comes from the selected model.",
-                "backend": "gguf",
-                "available": gguf_reason is None,
-                "reason": gguf_reason,
+                "value": spec.key,
+                "label": label,
+                "about": about,
+                "backend": spec.backend,
+                "available": reason is None,
+                "reason": reason,
+                "short": short_reason(reason),
             }
         )
     return out

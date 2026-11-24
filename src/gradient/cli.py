@@ -52,80 +52,37 @@ def cmd_serve(args: argparse.Namespace) -> int:
     )
     open_browser = bool(args.open or get_setting("app.open_browser", False))
     threading.Thread(target=_announce_when_ready, args=(url, open_browser), daemon=True).start()
+    from gradient.api.server import GracefulServer, reload_supervisor
+
+    config = uvicorn.Config(
+        "gradient.api.main:app",
+        host=host,
+        port=port,
+        log_config=None,
+        reload=reload,
+        reload_dirs=[str(PROJECT_ROOT / "src")] if reload else None,
+        timeout_graceful_shutdown=5,  # then still-open requests are closed
+    )
+    server = GracefulServer(config)
     try:
-        if reload:  # the reloader runs the server in a child process
-            uvicorn.run(
-                "gradient.api.main:app",
-                host=host,
-                port=port,
-                reload=True,
-                reload_dirs=[str(PROJECT_ROOT / "src")],
-                log_config=None,
-            )
+        if reload:  # the reloader runs the server in a child process (same clean stop)
+            reload_supervisor(config, target=server.run, sockets=[config.bind_socket()]).run()
         else:
-            from gradient.core import shutdown
-
-            config = uvicorn.Config(
-                "gradient.api.main:app",
-                host=host,
-                port=port,
-                log_config=None,
-                timeout_graceful_shutdown=5,  # then still-open requests are closed
-            )
-            server = _graceful_server(config)
-            shutdown.attach(server)
-            console_handler = _install_windows_console_handler()  # noqa: F841 (kept alive)
-            try:
-                server.run()
-            finally:
-                shutdown.detach()
-    except KeyboardInterrupt:  # uvicorn re-raises Ctrl+C after a graceful stop
+            server.run()
+    except KeyboardInterrupt:  # e.g. Ctrl+C while the app is still importing
         pass
+    from gradient.api.server import after_stop
+
+    after_stop()  # the reloader's process too
     print("GRADIENT stopped.", flush=True)
-    return 0
+    # Everything is saved and closed by now (the app's shutdown ran). Leave without Python's
+    # slow teardown of PyTorch & co.: a Ctrl+C during it would end with an error code.
+    import logging
 
-
-#: Windows console events: Ctrl+C, Ctrl+Break, the console window (or terminal) closing
-_CONSOLE_EVENTS = {0: "Ctrl+C", 1: "Ctrl+Break", 2: "the console was closed"}
-
-
-def _on_console_event(event: int) -> bool:
-    """Windows console control handler (runs in its own thread, so it works even while the
-    main thread is busy). The first Ctrl+C stops gracefully, the second at once."""
-    from gradient.core import shutdown
-
-    reason = _CONSOLE_EVENTS.get(event)
-    if reason is None:  # log-off / system shutdown: default handling
-        return False
-    if event == 2:  # Windows ends the process about 5 s after the console closes
-        shutdown.begin(reason)
-        shutdown.wait_stopped(4.0)
-        return True
-    if not shutdown.begin(reason):
-        print("\nStopped immediately.", flush=True)
-        os._exit(0)
-    return True
-
-
-def _install_windows_console_handler():
-    """Handle Ctrl+C ourselves on Windows. Some launchers (terminals, IDEs, .bat chains)
-    start programs with Ctrl+C switched off, which Python's own handler can't undo; here it
-    is switched back on first. Returns the callback (keep a reference) or None."""
-    if sys.platform != "win32":
-        return None
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        routine_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
-        routine = routine_type(lambda event: bool(_on_console_event(int(event))))
-        kernel32.SetConsoleCtrlHandler(None, False)  # undo an inherited "ignore Ctrl+C"
-        if not kernel32.SetConsoleCtrlHandler(routine, True):
-            return None
-        return routine
-    except Exception:  # no console (e.g. started without one): signals still work
-        return None
+    logging.shutdown()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
@@ -165,27 +122,6 @@ def cmd_stop(args: argparse.Namespace) -> int:
             return 0
     print("It's still finishing its current step; it will stop when that ends.")
     return 0
-
-
-def _graceful_server(config):
-    import signal
-
-    import uvicorn
-
-    from gradient.core import shutdown
-
-    class GracefulServer(uvicorn.Server):
-        """Ctrl+C: end event streams and the running job's work at its next step, then
-        stop; Ctrl+C again: stop at once (no tracebacks)."""
-
-        def handle_exit(self, sig, frame) -> None:
-            if shutdown.requested() and sig == signal.SIGINT:
-                print("\nStopped immediately.", flush=True)
-                os._exit(0)
-            shutdown.begin("Ctrl+C" if sig == signal.SIGINT else signal.Signals(sig).name)
-            super().handle_exit(sig, frame)
-
-    return GracefulServer(config)
 
 
 def _announce_when_ready(url: str, open_browser: bool, timeout: float = 600) -> None:

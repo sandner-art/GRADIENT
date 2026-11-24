@@ -199,3 +199,56 @@ def test_quantization_report(client, tiny_sd, tiny_sd_source, workspace, tiny_vi
         json={"base_request": {**BASE, "model_id": tiny_sd}, "variants": ["none"]},
     )
     assert bad.status_code in (400, 422) and "differs from the reference" in bad.text
+
+
+def test_precision_must_fit_the_model(client, tiny_sd, tiny_flux, tiny_sd_source, workspace):
+    """A GGUF for another family is offered as unavailable for that model and refused with a
+    clear message; a default precision that can't be used falls back to full precision."""
+    pytest.importorskip("gguf")
+    from gradient.core import config
+
+    target = workspace / "models" / "checkpoints" / "tiny-unet-Q8_0.gguf"
+    if not target.exists():
+        write_gguf_unet(tiny_sd_source, target)
+    assert quant.gguf_architecture("tiny-unet-Q8_0.gguf") == "sd1"
+
+    def option(model_id, value):
+        data = client.get("/api/v1/system/quantization", params={"model_id": model_id}).json()
+        return data, next(o for o in data["options"] if o["value"] == value)
+
+    data, sd = option(tiny_sd, "gguf:tiny-unet-Q8_0.gguf")
+    assert data["model_family"] == "sd15" and sd["available"] and "SD 1.5" in sd["about"]
+    data, flux = option(tiny_flux, "gguf:tiny-unet-Q8_0.gguf")
+    assert data["model_family"] == "flux1" and not flux["available"]
+    assert flux["short"] == "other model"
+    assert flux["reason"] == "tiny-unet-Q8_0.gguf is a SD 1.5 GGUF; this model is FLUX.1"
+    no_model = client.get("/api/v1/system/quantization").json()["options"]
+    assert next(o for o in no_model if o["value"] == "gguf:tiny-unet-Q8_0.gguf")["available"]
+
+    # asked for explicitly: refused before loading, with the reason
+    r = render(client, tiny_flux, quantization="gguf:tiny-unet-Q8_0.gguf")
+    assert r.status_code == 400 and "is a SD 1.5 GGUF; this model is FLUX.1" in r.text
+
+    # a default that can't be used here (bitsandbytes needs an NVIDIA GPU) → full precision
+    if torch.cuda.is_available():
+        pytest.skip("bitsandbytes is usable here")
+    perf = config.settings.setdefault("performance", {})
+    old = perf.get("default_quantization")
+    perf["default_quantization"] = "bnb-4bit"
+    try:
+        r = render(client, tiny_sd)
+        assert r.status_code == 200, r.text
+        assert r.json()["images"][0]["parameters"]["quantization"] == "none"
+        r = render(client, tiny_sd, quantization="bnb-4bit")  # explicit: says why not
+        assert r.status_code == 400 and "NVIDIA GPU" in r.text
+    finally:
+        perf["default_quantization"] = old if old is not None else "none"
+
+
+def test_single_file_needs_torchao():
+    spec = quant.QuantSpec("gguf", gguf_file="x.gguf")
+    reason = quant.fit_problem(spec, "sd15", single_file=True)
+    if quant.unavailable_reason(spec) is None:
+        assert "model folder" in reason and quant.short_reason(reason) == "needs a model folder"
+    if quant.unavailable_reason(quant.QuantSpec("torchao-int8")) is None:
+        assert quant.fit_problem(quant.QuantSpec("torchao-int8"), "sd15", single_file=True) is None
