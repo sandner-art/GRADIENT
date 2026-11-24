@@ -32,7 +32,7 @@ SUBMITTABLE: dict[str, type[BaseModel]] = {
     "xyz_grid": XYZGridRequest,
 }
 #: payload keys that are not stored in the database (large inline images)
-INLINE_KEYS = ("image_base64",)
+INLINE_KEYS = ("image_base64", "init_image_base64")
 
 
 def validate_payload(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -97,8 +97,9 @@ def _xyz_summary(response: XYZGridResponse) -> dict[str, Any]:
     }
 
 
-def register_lab_kind(tool: str, fn, request_model: type[BaseModel]) -> str:
-    """Lab tools run as interactive jobs; their results are saved as gallery runs."""
+def register_lab_kind(tool: str, fn, request_model: type[BaseModel], save: bool = True) -> str:
+    """Lab tools run as interactive jobs; their results are saved as gallery runs
+    (unless `save` is False: previews and suggestions that make no new images)."""
     from gradient.gallery.store import record_lab_run
 
     kind = f"lab_{tool}"
@@ -106,6 +107,8 @@ def register_lab_kind(tool: str, fn, request_model: type[BaseModel]) -> str:
     async def handler(job: Job):
         request = request_model.model_validate(job.payload)
         response = await run_gpu_task(fn, request)
+        if not save:
+            return response
         try:
             job.result = await record_lab_run(tool, request, response)
             job.run_uuid = job.result["run_uuid"]

@@ -6,6 +6,7 @@ import { patchItem, removeItems } from './state.svelte.js';
 import { cancelJob, moveJob, outputIds, retryJob } from '#lib/stores/queue.svelte.js';
 import {
 	closeViewer,
+	exploreImage,
 	notify,
 	openGallery,
 	openViewer,
@@ -95,6 +96,13 @@ export function imageMenu(id: number, opts: ImageMenuOptions = {}): MenuItem[] {
 			run: withDetail(id, (d) => {
 				leaveViewer();
 				sendToLab(d.parameters);
+			})
+		},
+		{
+			label: 'Explore…',
+			run: withDetail(id, (d) => {
+				leaveViewer();
+				exploreImage(d.parameters, `image #${id}`);
 			})
 		},
 		{ separator: true },

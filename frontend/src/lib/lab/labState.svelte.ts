@@ -19,7 +19,15 @@ export interface LabBase {
 	lora_weight: number;
 }
 
-export const lab = $state<{ base: LabBase; lanes: ModulationLane[]; busy: string | null }>({
+export type LabTool =
+	'explore' | 'taylor' | 'modulation' | 'attention' | 'ablation' | 'quantization';
+
+export const lab = $state<{
+	base: LabBase;
+	lanes: ModulationLane[];
+	busy: string | null;
+	tool: LabTool;
+}>({
 	base: {
 		model_id: '',
 		prompt: 'a red lighthouse on a rocky coast at sunset, dramatic clouds',
@@ -37,7 +45,9 @@ export const lab = $state<{ base: LabBase; lanes: ModulationLane[]; busy: string
 	/** Structural modulation lanes being edited in the Modulation tool. */
 	lanes: [{ type: 'prompt', start: 0, end: 0.3, prompt: 'a castle on a hill', mode: 'replace' }],
 	/** Label of the running Lab job, or null when idle (one job at a time). */
-	busy: null
+	busy: null,
+	/** the open Lab tool */
+	tool: 'explore'
 });
 
 /** Model family by model name (from the Models API; null when unknown, e.g. a bare checkpoint). */

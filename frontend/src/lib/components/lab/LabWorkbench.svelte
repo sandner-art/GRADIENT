@@ -2,15 +2,17 @@
 <!-- The Lab tab: shared base settings on the left, one research tool on the right. -->
 <script lang="ts">
 	import AttentionTool from './AttentionTool.svelte';
+	import Explorer from './Explorer.svelte';
 	import LabBaseSettings from './LabBaseSettings.svelte';
 	import LabProgress from './LabProgress.svelte';
 	import ModulationLanes from './ModulationLanes.svelte';
 	import QuantReport from './QuantReport.svelte';
 	import TaylorPreview from './TaylorPreview.svelte';
 	import TokenAblation from './TokenAblation.svelte';
+	import { lab, type LabTool } from '#lib/lab/labState.svelte.js';
 
-	type Tool = 'taylor' | 'modulation' | 'attention' | 'ablation' | 'quantization';
-	const tools: { id: Tool; label: string; hint: string }[] = [
+	const tools: { id: LabTool; label: string; hint: string }[] = [
+		{ id: 'explore', label: 'Explorer', hint: 'Travel through the model, region by region' },
 		{ id: 'taylor', label: 'Taylor preview', hint: 'Preview other CFG values instantly' },
 		{ id: 'modulation', label: 'Modulation lanes', hint: 'Change things for part of the run' },
 		{
@@ -25,7 +27,6 @@
 			hint: 'What loading the model quantized changes'
 		}
 	];
-	let tool = $state<Tool>('taylor');
 </script>
 
 <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -40,26 +41,27 @@
 				<button
 					type="button"
 					role="tab"
-					aria-selected={tool === t.id}
+					aria-selected={lab.tool === t.id}
 					title={t.hint}
 					class="rounded-full border px-3 py-1 text-sm font-medium transition"
-					class:border-indigo-500={tool === t.id}
-					class:bg-indigo-600={tool === t.id}
-					class:text-white={tool === t.id}
-					class:border-gray-300={tool !== t.id}
-					class:text-gray-700={tool !== t.id}
-					class:dark:border-gray-600={tool !== t.id}
-					class:dark:text-gray-200={tool !== t.id}
-					onclick={() => (tool = t.id)}>{t.label}</button
+					class:border-indigo-500={lab.tool === t.id}
+					class:bg-indigo-600={lab.tool === t.id}
+					class:text-white={lab.tool === t.id}
+					class:border-gray-300={lab.tool !== t.id}
+					class:text-gray-700={lab.tool !== t.id}
+					class:dark:border-gray-600={lab.tool !== t.id}
+					class:dark:text-gray-200={lab.tool !== t.id}
+					onclick={() => (lab.tool = t.id)}>{t.label}</button
 				>
 			{/each}
 		</div>
 
 		<!-- Keep every tool mounted so results survive switching between them. -->
-		<div hidden={tool !== 'taylor'}><TaylorPreview /></div>
-		<div hidden={tool !== 'modulation'}><ModulationLanes /></div>
-		<div hidden={tool !== 'attention'}><AttentionTool /></div>
-		<div hidden={tool !== 'ablation'}><TokenAblation /></div>
-		<div hidden={tool !== 'quantization'}><QuantReport /></div>
+		<div hidden={lab.tool !== 'explore'}><Explorer /></div>
+		<div hidden={lab.tool !== 'taylor'}><TaylorPreview /></div>
+		<div hidden={lab.tool !== 'modulation'}><ModulationLanes /></div>
+		<div hidden={lab.tool !== 'attention'}><AttentionTool /></div>
+		<div hidden={lab.tool !== 'ablation'}><TokenAblation /></div>
+		<div hidden={lab.tool !== 'quantization'}><QuantReport /></div>
 	</section>
 </div>

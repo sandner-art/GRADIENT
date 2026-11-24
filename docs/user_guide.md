@@ -164,7 +164,19 @@ Every image is saved under `experiments/<run id>/` with its full parameters in t
 
 ## Lab
 
-The **Lab** tab shares one set of base settings (model, prompt, size, steps, guidance, seed) between four tools. Keep a fixed seed so the tools look at the same image. Progress and the current sampler step are shown under the settings.
+The **Lab** tab shares one set of base settings (model, prompt, size, steps, guidance, seed) between its tools. Keep a fixed seed so the tools look at the same image. Progress and the current sampler step are shown under the settings.
+
+### Explorer
+
+The Explorer travels through the model one region at a time. Open it from the Lab (*Explore the Lab settings*), from any image (right-click → **Explore…**), or beside the render forms (preview panel → **Explore**, a compact version; *Open in Lab* continues there with the full tools).
+
+1. **Mark a region** on the image (rectangle, brush, eraser). Nothing marked = the whole image. The strip below shows what the model predicted at each step (*How it formed*); the percentage is how much that prediction still changes before the end.
+2. **Where can it move?** (*Measure*) branches the region with new noise at several steps and measures how much it changes, in DINO features (or pixels without a vision model). The curve is 1 at step 0 (a completely new region) and falls to 0 where the region has settled; the grey band marks where it settles. *Big changes*, *Variations* and *Details* pick the steps where about 75 %, 45 % and 15 % of the change is left. The dashed line is a **free estimate** from the render alone (how far the prediction still was from the final image at that step); the summary says how far it is off and how well its map matches the measured one, so you can judge whether to trust it for a model.
+3. **What drives it?** (*Suggest words*) ranks the prompt's words by how much they act in the region: attention maps on SD 1.x/SDXL (cross-attention) and FLUX/SD 3.5 (ConceptAttention) with one render, or ablation (one render per word) for any model. *× here* is how concentrated a word is in the region (1 = spread evenly). Each word gets alternatives from the text encoder's vocabulary; type your own, or *ask the LLM* if one is installed.
+4. **Branch** from the chosen step: *New noise* makes variations; picked words make word branches (all with the same noise, so only the word differs); *Mix in a prompt* blends the prompt's embeddings with another prompt's (like conditioning *average*); with a LoRA, *LoRA weights to try* branches its weight. Only the region changes; everything outside it is copied from the original after every step, so it stays exactly the same (a soft edge of about 16 pixels blends the border).
+5. **Continue from here** makes a branch the new image; the path above the image lets you go back to any point. Branches are saved to the gallery with their path, so *Explore…* on a saved branch continues where you left off. *Use as input* sends a branch to image-to-image.
+
+How it works: a branch takes the model's denoised estimate at that step, noises it back to the step's noise level (with new noise, or under another prompt) and denoises only the remaining steps through the model's own image-to-image pipeline, so late branches are cheap. The explorer needs a σ-based sampler (Euler, Euler a, DPM++ 2M, UniPC, DEIS, LMS, flow-matching Euler); others (DDIM, PNDM, Heun) are replaced by Euler, with a note. Image-to-image renders can be explored from the Image-to-Image preview (it has the input image). Custom sigmas and modulation lanes are not used by the explorer yet. `lab.explore_batch` (default 4) sets how many branches render together; lower it if a large model runs out of memory.
 
 ### Taylor preview
 Computes the derivative of the whole image with respect to the guidance scale, ∂image/∂w. The browser then previews any nearby CFG value instantly as image(w + Δ) ≈ image(w) + Δ·∂image/∂w, while you drag the slider.

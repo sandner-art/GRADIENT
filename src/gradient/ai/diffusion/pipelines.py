@@ -249,9 +249,10 @@ def generate_images(
     kwargs["generator"] = [torch.Generator(device=gen_device).manual_seed(s) for s in seeds]
 
     if task == "image2image":
-        if init_image_b64 is None:
+        if init_image_b64 is not None:
+            kwargs["image"] = prepare_init_image(init_image_b64, request.width, request.height)
+        elif not (call_overrides and "image" in call_overrides):  # latents given directly
             raise ValueError("image_base64 is required for image-to-image")
-        kwargs["image"] = prepare_init_image(init_image_b64, request.width, request.height)
         if strength is not None and "strength" in call_params:
             kwargs["strength"] = strength
 

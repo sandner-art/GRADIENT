@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.0 (2026-11-24)
+
+### Explorer: travel through the model, region by region
+- **Region branching**: mark a region (rectangle, brush, eraser) and branch it from any step. The model's denoised estimate at that step is noised back with new noise (or under another prompt) and only the remaining steps run, through the model's own image-to-image pipeline; outside the region the latents are copied from the original after every step, so it stays identical. Works for SD 1.x/SDXL (UNet) and FLUX/SD 3.5 (packed or plain latents); image-to-image renders too.
+- **Settling map**: branches at several steps measure how much the region can still change (DINO features or pixels, relative to a completely new region), with the step window where it settles and suggested steps for big changes, variations and details. A **free estimate** from the render alone is shown next to it, with its error and spatial correlation, so its precision is measured per model.
+- **Word suggestions**: the prompt's words ranked by how much they act in the region (cross-attention on UNets, ConceptAttention on FLUX/SD 3.5, ablation for any model), with alternatives from the text encoder's vocabulary, typed in, or from the local LLM.
+- **Branch kinds**: new noise, word swaps (same noise, only the word differs), prompt mixes (embedding average) and LoRA weights.
+- **Paths**: continue from any branch and go back along the path; trajectories are cached and paths replay exactly. Branches are saved as gallery images with their path, and *Explore…* on one continues it.
+- **Where**: the Lab's new **Explorer** tool (formation strip, settling chart with a table view, words, branches); **Explore** mode in the preview panel beside the render forms; **Explore…** in every image's right-click menu.
+
+### Other
+- Lab results can hold several gallery images (the explorer's branches); data-URL images in reports are stored correctly.
+- Setting `lab.explore_batch` (default 4): branches rendered together.
+- `install.ps1`/`update.ps1` forward `-WithQuant`.
+
+### API
+- `POST /lab/explore/start`, `/lab/explore/map`, `/lab/explore/tokens`, `/lab/explore/branches`; run types `lab_explore_map`, `lab_explore_branches`.
+
+### Tests
+- Exact background lock and replay on SD; FLUX and SD3 branching with packed and plain latents; settling map, word suggestions (attention and ablation), word and mix branches; image-to-image bases; gallery saving with paths; strength rounding for both img2img conventions.
+
 ## 0.8.0 (2026-11-24)
 
 ### Quantized models

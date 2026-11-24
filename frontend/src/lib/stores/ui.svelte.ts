@@ -4,6 +4,7 @@
 
 import type { GalleryFilter, ImageToImageRequest, Text2ImageRequest } from '#lib/types.js';
 import { lab } from '#lib/lab/labState.svelte.js';
+import { loadImage, openFromParams } from '#lib/lab/explore.svelte.js';
 import { i2iFormStore } from '#lib/stores/i2iFormStore.js';
 import { t2iFormStore } from '#lib/stores/t2iFormStore.js';
 
@@ -165,6 +166,18 @@ export function sendToLab(params: Record<string, unknown>) {
 	});
 	goTo('lab');
 	notify(`Settings loaded into the Lab${notes.length ? ` (${notes.join('; ')})` : ''}`, 'success');
+}
+
+/** Explore a saved image (or continue its explorer path) in the Lab's Explorer. */
+export function exploreImage(params: Record<string, unknown>, source: string) {
+	const problem = openFromParams(params, source);
+	if (problem) {
+		notify(problem, 'error');
+		return;
+	}
+	lab.tool = 'explore';
+	goTo('lab');
+	void loadImage();
 }
 
 export async function useAsInitImage(imageUrl: string, params: Record<string, unknown>) {

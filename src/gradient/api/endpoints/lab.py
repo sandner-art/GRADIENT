@@ -13,6 +13,7 @@ from gradient.ai.diffusion.loading import get_loaded_entry
 from gradient.ai.lab.ablation import token_ablation
 from gradient.ai.lab.attention import attention_maps
 from gradient.ai.lab.concept_attention import concept_attention_maps, concept_support
+from gradient.ai.lab.explorer import explore_branches, explore_map, explore_start, explore_tokens
 from gradient.ai.lab.models import (
     AblationRequest,
     AblationResponse,
@@ -20,6 +21,14 @@ from gradient.ai.lab.models import (
     AttentionMapResponse,
     ConceptAttentionRequest,
     ConceptAttentionResponse,
+    ExploreBranchesRequest,
+    ExploreBranchesResponse,
+    ExploreMapRequest,
+    ExploreMapResponse,
+    ExploreStartRequest,
+    ExploreStartResponse,
+    ExploreTokensRequest,
+    ExploreTokensResponse,
     QuantReportRequest,
     QuantReportResponse,
     TaylorRequest,
@@ -43,6 +52,12 @@ ATTENTION = register_lab_kind("attention", attention_maps, AttentionMapRequest)
 CONCEPTS = register_lab_kind("concept_attention", concept_attention_maps, ConceptAttentionRequest)
 ABLATION = register_lab_kind("token_ablation", token_ablation, AblationRequest)
 QUANTIZATION = register_lab_kind("quantization", quantization_report, QuantReportRequest)
+EXPLORE_START = register_lab_kind("explore_start", explore_start, ExploreStartRequest, save=False)
+EXPLORE_MAP = register_lab_kind("explore_map", explore_map, ExploreMapRequest)
+EXPLORE_TOKENS = register_lab_kind(
+    "explore_tokens", explore_tokens, ExploreTokensRequest, save=False
+)
+EXPLORE_BRANCHES = register_lab_kind("explore_branches", explore_branches, ExploreBranchesRequest)
 
 
 async def _run_lab(kind: str, request, priority: int = PRIORITY_INTERACTIVE):
@@ -61,6 +76,54 @@ async def handle_quantization_report(request: QuantReportRequest = Body(...)):
         return await _run_lab(QUANTIZATION, request, priority=0)
     except Exception as e:
         raise to_http_error(e, "quantization report") from e
+
+
+@router.post(
+    "/lab/explore/start",
+    response_model=ExploreStartResponse,
+    summary="Explorer: render (or replay a path) and show how the image formed",
+)
+async def handle_explore_start(request: ExploreStartRequest = Body(...)):
+    try:
+        return await _run_lab(EXPLORE_START, request)
+    except Exception as e:
+        raise to_http_error(e, "explorer") from e
+
+
+@router.post(
+    "/lab/explore/map",
+    response_model=ExploreMapResponse,
+    summary="Explorer: when does a region settle? (branches at several steps, measured)",
+)
+async def handle_explore_map(request: ExploreMapRequest = Body(...)):
+    try:
+        return await _run_lab(EXPLORE_MAP, request)
+    except Exception as e:
+        raise to_http_error(e, "explorer map") from e
+
+
+@router.post(
+    "/lab/explore/tokens",
+    response_model=ExploreTokensResponse,
+    summary="Explorer: which words act on a region, with alternatives",
+)
+async def handle_explore_tokens(request: ExploreTokensRequest = Body(...)):
+    try:
+        return await _run_lab(EXPLORE_TOKENS, request)
+    except Exception as e:
+        raise to_http_error(e, "explorer words") from e
+
+
+@router.post(
+    "/lab/explore/branches",
+    response_model=ExploreBranchesResponse,
+    summary="Explorer: render branches of a region (seeds, words, mixes, LoRA weights)",
+)
+async def handle_explore_branches(request: ExploreBranchesRequest = Body(...)):
+    try:
+        return await _run_lab(EXPLORE_BRANCHES, request)
+    except Exception as e:
+        raise to_http_error(e, "explorer branches") from e
 
 
 @router.post(

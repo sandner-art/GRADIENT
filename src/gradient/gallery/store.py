@@ -549,6 +549,8 @@ def make_thumb(source: Path, output_id: int, size: int) -> Path:
 
 # --------------------------------------------------------------------------- Lab runs
 _MAIN_IMAGE_KEYS = ("image_base64", "base_image_base64")
+#: lists whose items (with image_base64 + parameters) are saved as gallery images
+_GALLERY_LISTS = ("branches",)
 
 
 def _ext(data: bytes) -> str:
@@ -561,11 +563,14 @@ async def record_lab_run(tool: str, request: Any, response: Any) -> dict[str, An
     started = time.time()
     run_uuid = str(uuid.uuid4())
     req = request.model_dump(mode="json")
+    req.pop("init_image_base64", None)  # large; the input image isn't part of the result
     data = response.model_dump(mode="json")
     base_params = dict(req.get("base_request") or {})
     if "seed" in data:
         base_params["seed"] = data["seed"]
-    folder, main = await asyncio.to_thread(_write_lab_files, tool, run_uuid, req, data, base_params)
+    folder, main, extra = await asyncio.to_thread(
+        _write_lab_files, tool, run_uuid, req, data, base_params
+    )
 
     output_ids: list[int] = []
     async with get_db_session() as db:
@@ -600,6 +605,17 @@ async def record_lab_run(tool: str, request: Any, response: Any) -> dict[str, An
                     **{**output_fields(params), "width": img.width, "height": img.height},
                 ),
             )
+        for file, img, params in extra:  # e.g. explorer branches: each a gallery image
+            params = {**params, "lab_tool": tool}
+            rows.append(
+                GeneratedOutput(
+                    run_id=run.id,
+                    output_type="image",
+                    file_path=str(file.resolve()),
+                    parameters=params,
+                    **{**output_fields(params), "width": img.width, "height": img.height},
+                )
+            )
         db.add_all(rows)
         await db.flush()
         output_ids = [r.id for r in rows if r.output_type == "image"]
@@ -608,12 +624,34 @@ async def record_lab_run(tool: str, request: Any, response: Any) -> dict[str, An
 
 def _write_lab_files(
     tool: str, run_uuid: str, req: dict, data: dict, base_params: dict
-) -> tuple[Path, tuple[Path, Image.Image] | None]:
-    """Write the main image (with metadata), maps and report.json of a Lab result."""
+) -> tuple[Path, tuple[Path, Image.Image] | None, list[tuple[Path, Image.Image, dict]]]:
+    """Write the main image (with metadata), maps and report.json of a Lab result.
+
+    Items of a top-level list in _GALLERY_LISTS that carry `image_base64` and `parameters`
+    become gallery images of their own (returned as the third value)."""
     folder = get_outputs_dir() / run_uuid
     folder.mkdir(parents=True, exist_ok=True)
     main: tuple[Path, Image.Image] | None = None
+    extra: list[tuple[Path, Image.Image, dict]] = []
     counter = 0
+    data = dict(data)
+    for key in _GALLERY_LISTS:
+        items = data.get(key)
+        if not isinstance(items, list):
+            continue
+        kept = []
+        for i, item in enumerate(items):
+            if not (isinstance(item, dict) and item.get("image_base64") and item.get("parameters")):
+                kept.append(item)
+                continue
+            params = dict(item["parameters"])
+            img = Image.open(io.BytesIO(base64.b64decode(item["image_base64"]))).convert("RGB")
+            file = folder / f"lab_{tool}_{i + 1:02d}_seed{params.get('seed', 'x')}.png"
+            img.save(file, "PNG", pnginfo=png_info({**params, "lab_tool": tool}))
+            extra.append((file, img, params))
+            item = {k: v for k, v in item.items() if k != "image_base64"}
+            kept.append({**item, "image_file": file.name})
+        data[key] = kept
 
     def externalize(node: Any, top: bool) -> Any:
         nonlocal main, counter
@@ -626,7 +664,11 @@ def _write_lab_files(
             if not (isinstance(v, str) and k.endswith("_base64")):
                 out[k] = externalize(v, False)
                 continue
-            raw = base64.b64decode(v)
+            try:  # plain base64 or a data URL (e.g. explorer region masks)
+                raw = base64.b64decode(v.split(",", 1)[1] if v.startswith("data:") else v)
+            except ValueError:
+                out[k] = v
+                continue
             stem = k.removesuffix("_base64")
             if main is None and top and k in _MAIN_IMAGE_KEYS:
                 img = Image.open(io.BytesIO(raw)).convert("RGB")
@@ -646,4 +688,4 @@ def _write_lab_files(
     (folder / "report.json").write_text(
         json.dumps({"tool": tool, "request": req, "result": report}, indent=2), encoding="utf-8"
     )
-    return folder, main
+    return folder, main, extra

@@ -570,3 +570,119 @@ export interface QuantReportResponse {
 	summary: string;
 	performance_ms: number;
 }
+
+// ---- Explorer (/lab/explore/*)
+export type ExploreKind = 'seed' | 'prompt' | 'mix' | 'lora';
+
+export interface ExploreOp {
+	step: number;
+	mask_base64: string | null;
+	kind: ExploreKind;
+	seed: number;
+	prompt: string | null;
+	mix_prompt: string | null;
+	mix_weight: number;
+	lora_weight: number | null;
+	label: string | null;
+}
+
+export interface ExploreBaseBody {
+	base_request: Text2ImageRequest;
+	init_image_base64: string | null;
+	strength: number | null;
+	path: ExploreOp[];
+}
+
+export interface ExploreFrame {
+	step: number;
+	sigma: number;
+	image_base64: string;
+	still_changing_base64: string;
+	still_changing: number;
+}
+
+export interface ExploreStartResponse {
+	image_base64: string;
+	seed: number;
+	steps: number;
+	scheduler: string;
+	prompt: string;
+	frames: ExploreFrame[];
+	note: string | null;
+	performance_ms: number;
+}
+
+export interface ExploreMapPoint {
+	step: number;
+	sigma: number;
+	change: number;
+	distance: number;
+	spread: number;
+	estimate: number | null;
+	images_base64: string[];
+	heatmap_base64: string;
+}
+
+export interface ExploreMapResponse {
+	image_base64: string;
+	reference_image_base64: string;
+	seed: number;
+	points: ExploreMapPoint[];
+	window: number[] | null;
+	suggested: Record<'big' | 'variations' | 'details', number>;
+	estimate_error: number | null;
+	estimate_correlation: number | null;
+	metric: 'dino' | 'pixels';
+	feature_model: string | null;
+	feature_note: string | null;
+	summary: string;
+	performance_ms: number;
+}
+
+export interface TokenSuggestion {
+	word: string;
+	score: number;
+	strength: number;
+	lift: number;
+	alternatives: string[];
+	overlay_base64: string | null;
+}
+
+export interface ExploreTokensResponse {
+	image_base64: string;
+	prompt: string;
+	method: string;
+	words: TokenSuggestion[];
+	note: string | null;
+	performance_ms: number;
+}
+
+export interface ExploreBranchSpec {
+	kind: ExploreKind;
+	seed?: number | null;
+	prompt?: string | null;
+	mix_prompt?: string | null;
+	mix_weight?: number;
+	lora_weight?: number | null;
+	label?: string | null;
+}
+
+export interface ExploreBranch {
+	label: string;
+	op: ExploreOp;
+	image_base64: string;
+	parameters: Record<string, unknown>;
+	change: number | null;
+	outside_change: number | null;
+}
+
+export interface ExploreBranchesResponse {
+	reference_image_base64: string;
+	seed: number;
+	step: number;
+	sigma: number;
+	branches: ExploreBranch[];
+	metric: 'dino' | 'pixels';
+	feature_note: string | null;
+	performance_ms: number;
+}

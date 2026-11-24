@@ -20,7 +20,7 @@ While powerful, existing generative AI tools often present fragmented workflows,
 3.  **Reproducible Research:** Integrating tools for systematic evaluation, logging, and analysis.
 4.  **Structural Creativity:** Offering capabilities to manipulate the generative process itself for unique artistic outcomes.
 
-## What works today (v0.8.0)
+## What works today (v0.9.0)
 
 *   **Any diffusers model family:** SD 1.5, SDXL, SD 3.5, FLUX.1, FLUX.2, Qwen-Image, Z-Image, Chroma, Sana, Krea 2 and more (diffusers folders, Hub repos, and SD/SDXL/SD3/FLUX single-file checkpoints).
 *   **Built-in Model Manager:** a verified catalog of base models, LoRAs, VAEs, ControlNets and GGUF LLMs; one-click downloads from Hugging Face, any repo/file link, or direct URLs (e.g. Civitai), with progress, cancel and resume. Also on the command line.
@@ -32,6 +32,7 @@ While powerful, existing generative AI tools often present fragmented workflows,
 *   **Project folders for other tools:** export a selection or a filtered view into a folder with XMP sidecars (tags, rating, prompt) that [Kurator](https://github.com/eigensoundlab/kurator), digiKam, Lightroom and darktable read, and that [ArtAgents](https://github.com/sandner-art/ArtAgents) can caption. **Sync** brings their tags, ratings and captions back into the gallery, each marked with where it came from.
 *   **Reproducibility:** every image is generated with its own seeded generator, saved with full parameters in PNG metadata and logged to a local SQLite experiment database. PNGs also carry an A1111-style `parameters` text, so other tools (image managers, taggers, other UIs) can read the prompt, seed and LoRAs.
 *   **Parameter sensitivity maps** (where in the image does CFG or a LoRA weight matter?) by central finite differences.
+*   **Explorer: travel through the model, region by region.** Mark a region on any image and see *when* it settles during denoising (measured with branches, next to a free estimate from the render itself), *which words* act on it (with alternatives from the text encoder's vocabulary or the local LLM), then **branch** it from any step: new noise, other words, a prompt mix or LoRA weights, while the rest of the image stays exactly as it was. Continue from any branch to go further; the path is saved with every image, so right-click → *Explore…* picks it up later. In the Lab and as **Explore** beside the render forms; works with SD 1.5/SDXL, SD 3.5 and FLUX.
 *   **Lab tab** for looking inside a generation:
     *   **Taylor preview:** one exact derivative of the image with respect to CFG (forward-mode autodiff through the whole sampler on SD 1.x/SDXL, finite differences elsewhere). A slider then previews nearby CFG values instantly, and you can check the prediction against a real render.
     *   **Structural modulation lanes:** switch or blend the prompt, change guidance, scale chosen attention layers or a LoRA weight for part of the denoising run. Lanes also work in every API generation request.
@@ -41,7 +42,7 @@ While powerful, existing generative AI tools often present fragmented workflows,
 *   **Memory modes** for small GPUs: full GPU, model offload, group offload with CUDA streams, sequential offload, picked automatically from model size and free VRAM.
 *   **Local LLM chat** (GGUF via llama.cpp) for prompt work.
 
-Further research features (latent-space navigator, attribute directions, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
+Further research features (output atlas, attribute directions, agentic art director) are reviewed against the current state of the art in [docs/research/research_review_2026-10.md](docs/research/research_review_2026-10.md).
 
 ## Installation
 

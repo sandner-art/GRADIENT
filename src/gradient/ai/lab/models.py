@@ -216,3 +216,176 @@ class QuantReportResponse(BaseModel):
     )
     summary: str
     performance_ms: float
+
+
+# ----------------------------------------------------------------- explorer
+class ExploreOp(BaseModel):
+    """One step on an exploration path: the region is opened again at `step` and denoised
+    again (new noise, maybe another prompt); everything outside it is kept."""
+
+    step: int = Field(..., ge=0, description="Step (of this render's steps) to branch at")
+    mask_base64: str | None = Field(
+        default=None, description="PNG, white (or opaque) = the region; null = the whole image"
+    )
+    kind: Literal["seed", "prompt", "mix", "lora"] = "seed"
+    seed: int = Field(..., ge=0, description="Seed of the fresh noise in the region")
+    prompt: str | None = Field(default=None, description="Prompt while branching (null: base)")
+    mix_prompt: str | None = Field(
+        default=None, description="Blend the prompt's embeddings with this prompt's"
+    )
+    mix_weight: float = Field(default=0.5, ge=0, le=1)
+    lora_weight: float | None = Field(
+        default=None, description="Weight of the (first) LoRA while branching (null: as set)"
+    )
+    label: str | None = None
+
+
+class ExploreBase(BaseModel):
+    base_request: Text2ImageRequest = Field(..., description="The render to explore")
+    init_image_base64: str | None = Field(
+        default=None, description="Explore an image-to-image render: its input image"
+    )
+    strength: float | None = Field(default=None, gt=0, le=1, description="Its strength")
+    path: list[ExploreOp] = Field(
+        default_factory=list, description="Branches taken so far, in order"
+    )
+
+
+class ExploreStartRequest(ExploreBase):
+    frames: int = Field(default=8, ge=2, le=16, description="Denoised estimates to show")
+
+
+class ExploreFrame(BaseModel):
+    step: int
+    sigma: float
+    image_base64: str = Field(..., description="What the model predicted at this step")
+    still_changing_base64: str = Field(
+        ..., description="Where that prediction still changes before the end (free estimate)"
+    )
+    still_changing: float = Field(..., description="Mean of that map, 1 at the first frame")
+
+
+class ExploreStartResponse(BaseModel):
+    image_base64: str
+    seed: int
+    steps: int = Field(..., description="Steps of this render (branch steps are 0..steps-1)")
+    scheduler: str
+    prompt: str = Field(..., description="The prompt in effect after the path")
+    frames: list[ExploreFrame]
+    note: str | None = None
+    performance_ms: float
+
+
+class ExploreMapRequest(ExploreBase):
+    mask_base64: str | None = Field(default=None, description="The region (null: whole image)")
+    steps: list[int] | None = Field(default=None, description="Steps to test (default: spread)")
+    num_steps: int = Field(default=6, ge=2, le=12)
+    branches: int = Field(default=3, ge=1, le=8, description="New seeds per step")
+    seed: int | None = Field(default=None, description="First branch seed (default: seed + 1000)")
+    feature_model: str | None = None
+
+
+class ExploreMapPoint(BaseModel):
+    step: int
+    sigma: float
+    change: float = Field(
+        ..., description="How much the region changed, relative to a completely new region (step 0)"
+    )
+    distance: float = Field(..., description="Mean distance of the branches from the image")
+    spread: float = Field(..., description="Standard deviation of that distance over branches")
+    estimate: float | None = Field(
+        default=None, description="The free estimate from the render itself (same scale)"
+    )
+    images_base64: list[str] = Field(..., description="Thumbnails of the branches")
+    heatmap_base64: str = Field(..., description="Where the branches differed")
+
+
+class ExploreMapResponse(BaseModel):
+    image_base64: str = Field(..., description="Overview: one row per step")
+    reference_image_base64: str
+    seed: int
+    points: list[ExploreMapPoint]
+    window: list[float] | None = Field(
+        default=None, description="Steps where the change falls from 0.8 to 0.2 (interpolated)"
+    )
+    suggested: dict[str, int] = Field(
+        default_factory=dict, description="Steps for 'big' changes, 'variations' and 'details'"
+    )
+    estimate_error: float | None = Field(
+        default=None, description="Mean |estimate - change| over the steps"
+    )
+    estimate_correlation: float | None = Field(
+        default=None, description="Spatial correlation of the free map with the measured one"
+    )
+    metric: str = Field(..., description="'dino' (feature patches) or 'pixels'")
+    feature_model: str | None = None
+    feature_note: str | None = None
+    summary: str
+    performance_ms: float
+
+
+class ExploreTokensRequest(ExploreBase):
+    mask_base64: str | None = None
+    method: Literal["auto", "attention", "ablation"] = Field(
+        default="auto",
+        description="attention: one render (cross-attention or ConceptAttention); "
+        "ablation: one render per word (any model)",
+    )
+    max_words: int = Field(default=8, ge=1, le=20)
+    alternatives: int = Field(default=6, ge=0, le=20)
+    feature_model: str | None = None
+
+
+class TokenSuggestion(BaseModel):
+    word: str
+    score: float = Field(..., description="0..1, how much the word acts in the region")
+    strength: float = Field(..., description="Its attention (or ablation change) in the region")
+    lift: float = Field(..., description="How concentrated it is in the region (1 = evenly spread)")
+    alternatives: list[str] = Field(default_factory=list)
+    overlay_base64: str | None = None
+
+
+class ExploreTokensResponse(BaseModel):
+    image_base64: str
+    prompt: str
+    method: str
+    words: list[TokenSuggestion]
+    note: str | None = None
+    performance_ms: float
+
+
+class ExploreBranchSpec(BaseModel):
+    kind: Literal["seed", "prompt", "mix", "lora"] = "seed"
+    seed: int | None = Field(default=None, description="Default: a new seed per branch")
+    prompt: str | None = None
+    mix_prompt: str | None = None
+    mix_weight: float = Field(default=0.5, ge=0, le=1)
+    lora_weight: float | None = None
+    label: str | None = None
+
+
+class ExploreBranchesRequest(ExploreBase):
+    mask_base64: str | None = None
+    step: int = Field(..., ge=0)
+    branches: list[ExploreBranchSpec] = Field(..., min_length=1, max_length=12)
+    feature_model: str | None = None
+
+
+class ExploreBranch(BaseModel):
+    label: str
+    op: ExploreOp = Field(..., description="Append it to the path to continue from this branch")
+    image_base64: str
+    parameters: dict = Field(..., description="Saved with the image (gallery, PNG metadata)")
+    change: float | None = Field(default=None, description="Distance from the image in the region")
+    outside_change: float | None = Field(default=None, description="Distance outside the region")
+
+
+class ExploreBranchesResponse(BaseModel):
+    reference_image_base64: str
+    seed: int
+    step: int
+    sigma: float
+    branches: list[ExploreBranch]
+    metric: str
+    feature_note: str | None = None
+    performance_ms: float
