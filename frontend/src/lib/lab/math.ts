@@ -56,9 +56,11 @@ export function laneSteps(start: number, end: number, total: number): [number, n
 export function laneProblem(lane: ModulationLane, loraCount: number): string | null {
 	if (!(lane.end > lane.start)) return 'end must be greater than start';
 	if (lane.start < 0 || lane.end > 1) return 'start/end must be between 0 and 1';
-	if (lane.type !== 'prompt' && (lane.value === null || lane.value === undefined))
-		return 'needs a value';
-	if (lane.type === 'prompt' && !lane.prompt?.trim()) return 'needs a prompt';
+	const promptLike = lane.type === 'prompt' || lane.type === 'prompt_injection';
+	if (!promptLike && (lane.value === null || lane.value === undefined)) return 'needs a value';
+	if (promptLike && !lane.prompt?.trim()) return 'needs a prompt';
+	if (lane.type === 'prompt_injection' && !lane.targets?.trim())
+		return 'needs target layers (a preset or a pattern)';
 	if (lane.type === 'attention_scale' && !lane.targets?.trim()) return 'needs target layers';
 	if (lane.type === 'lora_weight') {
 		if (loraCount === 0) return 'add a LoRA in the base settings first';
@@ -70,14 +72,15 @@ export function laneProblem(lane: ModulationLane, loraCount: number): string | n
 /** Only the fields the backend expects for this lane type. */
 export function cleanLane(lane: ModulationLane): ModulationLane {
 	const out: ModulationLane = { type: lane.type, start: lane.start, end: lane.end };
-	if (lane.type === 'prompt') {
+	if (lane.type === 'prompt' || lane.type === 'prompt_injection') {
 		out.prompt = lane.prompt ?? '';
 		out.mode = lane.mode ?? 'replace';
 		if (out.mode === 'blend') out.value = lane.value ?? 0.5;
 	} else {
 		out.value = lane.value ?? null;
 	}
-	if (lane.type === 'attention_scale') out.targets = lane.targets ?? '';
+	if (lane.type === 'attention_scale' || lane.type === 'prompt_injection')
+		out.targets = lane.targets ?? '';
 	if (lane.type === 'lora_weight') out.lora_index = lane.lora_index ?? 0;
 	return out;
 }

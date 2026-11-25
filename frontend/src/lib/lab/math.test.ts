@@ -60,6 +60,9 @@ describe('lanes', () => {
 			laneProblem({ type: 'lora_weight', start: 0, end: 1, value: 1, lora_index: 0 }, 0)
 		).toMatch(/LoRA/);
 		expect(laneProblem({ type: 'prompt', start: 0, end: 0.3, prompt: 'a dog' }, 0)).toBeNull();
+		const inject = { type: 'prompt_injection' as const, start: 0, end: 1, prompt: 'ink' };
+		expect(laneProblem(inject, 0)).toMatch(/target/);
+		expect(laneProblem({ ...inject, targets: 'sdxl-style' }, 0)).toBeNull();
 	});
 	it('drops fields the lane type does not use', () => {
 		expect(
@@ -80,6 +83,23 @@ describe('lanes', () => {
 			prompt: 'p',
 			mode: 'blend',
 			value: 0.5
+		});
+		expect(
+			cleanLane({
+				type: 'prompt_injection',
+				start: 0,
+				end: 1,
+				prompt: 'ink',
+				targets: 'sdxl-style',
+				lora_index: 2
+			})
+		).toEqual({
+			type: 'prompt_injection',
+			start: 0,
+			end: 1,
+			prompt: 'ink',
+			mode: 'replace',
+			targets: 'sdxl-style'
 		});
 	});
 });

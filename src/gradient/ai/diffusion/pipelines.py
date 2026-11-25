@@ -49,6 +49,7 @@ from .models import (
     ImageToImageRequest,
     ImageToImageResponse,
     LoRAParameter,
+    ModulationLane,
     Text2ImageRequest,
     Text2ImageResponse,
 )
@@ -154,12 +155,21 @@ def generate_images(
     base_seed = resolve_seed(request.seed)
     # styles, {a|b} wildcards and <lora:name:w> tags make the prompts that are rendered
     original = request
-    clip_syntax = request.prompt_syntax != "plain" and model_profile(request.model_id)[0] in (
-        "sd15",
-        "sdxl",
-    )
-    prepared = styles.prepare(request, base_seed, clip_syntax)
+    family = model_profile(request.model_id)[0]
+    clip_syntax = request.prompt_syntax != "plain" and family in ("sd15", "sdxl")
+    prepared = styles.prepare(request, base_seed, clip_syntax, style_blocks=family == "sdxl")
     params.update(prepared.params)
+    if (
+        prepared.injection
+    ):  # style_position "blocks": a prompt_injection lane on SDXL's style blocks
+        lane = ModulationLane(
+            type="prompt_injection",
+            prompt=prepared.injection,
+            targets="sdxl-style",
+            start=prepared.injection_start,
+            end=1.0,
+        )
+        request = request.model_copy(update={"modulation": [*(request.modulation or []), lane]})
     if prepared.params or prepared.loras:
         explicit = list(request.loras or [])
         extra = [
@@ -198,7 +208,7 @@ def generate_images(
     reads_syntax = original.prompt_syntax != "plain" and bool(clip_encoders(pipe))
     if reads_syntax != clip_syntax and (original.styles or "{" in original.prompt):
         # the model family guessed before loading was wrong: style it again for this model
-        again = styles.prepare(original, base_seed, reads_syntax)
+        again = styles.prepare(original, base_seed, reads_syntax, style_blocks=family == "sdxl")
         for key in ("styled_prompt", "styled_negative_prompt", "style_start_applied"):
             params.pop(key, None)
         params.update(again.params)

@@ -2,7 +2,7 @@
 // Prompt styles (A1111 styles.csv): the list from the server, grouped for the picker, and
 // the preview of the prompts a render will use.
 
-export type StylePosition = 'template' | 'before' | 'after' | 'chunk';
+export type StylePosition = 'template' | 'before' | 'after' | 'chunk' | 'blocks';
 
 export interface PromptStyle {
 	name: string;
@@ -28,6 +28,7 @@ export interface StylePreview {
 	prompt: string;
 	negative_prompt: string | null;
 	loras: { name: string; weight: number }[];
+	style_injection?: string | null; // position 'blocks': what the style blocks read
 	notes: Record<string, unknown>;
 	model_family: string | null;
 	reads_syntax: boolean;
@@ -38,7 +39,8 @@ export const POSITIONS: { value: StylePosition; label: string }[] = [
 	{ value: 'template', label: 'Template ({prompt}, A1111)' },
 	{ value: 'before', label: 'Before the prompt' },
 	{ value: 'after', label: 'After the prompt' },
-	{ value: 'chunk', label: 'Own chunk (BREAK)' }
+	{ value: 'chunk', label: 'Own chunk (BREAK)' },
+	{ value: 'blocks', label: 'Style blocks only (SDXL)' }
 ];
 
 /** Styles matching the search (name or text), grouped by the part of the name before ":". */

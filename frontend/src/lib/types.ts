@@ -15,7 +15,7 @@ export interface DiffusionTaskBase {
 	negative_prompt?: string | null; // Allow null
 	prompt_syntax?: PromptSyntax;
 	styles?: string[] | null;
-	style_position?: 'template' | 'before' | 'after' | 'chunk';
+	style_position?: 'template' | 'before' | 'after' | 'chunk' | 'blocks';
 	style_start?: number;
 	height?: number;
 	width?: number;
@@ -39,7 +39,8 @@ export interface LoRAParameter {
 }
 
 /** One lane on the denoising timeline, active for steps in [start, end) (fractions of the run). */
-export type ModulationLaneType = 'guidance' | 'prompt' | 'attention_scale' | 'lora_weight';
+export type ModulationLaneType =
+	'guidance' | 'prompt' | 'attention_scale' | 'lora_weight' | 'prompt_injection';
 export interface ModulationLane {
 	type: ModulationLaneType;
 	start: number;

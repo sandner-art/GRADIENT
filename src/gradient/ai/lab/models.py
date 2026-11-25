@@ -426,7 +426,7 @@ class EmbedResponse(BaseModel):
 
 
 # ----------------------------------------------------------------- style check
-StylePosition = Literal["template", "before", "after", "chunk"]
+StylePosition = Literal["template", "before", "after", "chunk", "blocks"]
 
 
 class StyleCheckRequest(BaseModel):

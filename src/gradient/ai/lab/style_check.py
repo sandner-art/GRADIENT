@@ -74,6 +74,8 @@ def _row_notes(params: dict, position: str, clip_family: bool) -> list[str]:
         notes.append("style start needs SD/SDXL")
     if position == "chunk" and not clip_family:
         notes.append("own chunk is the same as after for this model")
+    if params.get("style_blocks_applied") is False:
+        notes.append("style blocks need SDXL: placed after the prompt")
     return notes
 
 

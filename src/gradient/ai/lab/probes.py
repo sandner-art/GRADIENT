@@ -76,6 +76,14 @@ def attention_layers(pipe) -> list[dict[str, Any]]:
     return layers
 
 
+# InstantStyle (SDXL): up_blocks.0.attentions.1 carries style (colour, material, atmosphere),
+# down_blocks.2.attentions.1 carries the layout. https://instantstyle.github.io
+INJECTION_PRESETS = {
+    "sdxl-style": "up_blocks.0.attentions.1.*attn2",
+    "sdxl-layout": "down_blocks.2.attentions.1.*attn2",
+}
+
+
 def match_layers(pipe, pattern: str) -> list[tuple[str, torch.nn.Module]]:
     patterns = [p.strip() for p in pattern.split(",") if p.strip()]
     found = [
@@ -152,6 +160,7 @@ class ModulationController(Probe):
         self.total = 1
         self.cfg_active = True
         self.dynamic_cfg = False
+        self.injections: list[dict[str, Any]] = []  # prompt_injection lanes, with state
 
     @property
     def tensor_inputs(self) -> tuple[str, ...]:  # type: ignore[override]
@@ -212,6 +221,11 @@ class ModulationController(Probe):
             self.applied["lora_weight"] = True
             self._update_loras(0)
 
+        # prompt injection lanes: another prompt for the cross-attention of chosen blocks
+        injection_lanes = [lane for lane in self.lanes if lane.type == "prompt_injection"]
+        if injection_lanes:
+            self._attach_injections(pipe, injection_lanes)
+
         # prompt lanes: capture every prompt's text tensors in the pipeline's own format
         prompt_lanes = [lane for lane in self.lanes if lane.type == "prompt"]
         if prompt_lanes:
@@ -240,6 +254,70 @@ class ModulationController(Probe):
             self.applied["prompt"] = True
             if any(lane.mode == "blend" and self._active(lane, 0) for lane in prompt_lanes):
                 self.notes.append("prompt blends active at the first step take effect from step 2")
+
+    def _attach_injections(self, pipe, lanes) -> None:
+        from gradient.ai.diffusion.prompt_syntax import PromptEncoder, PromptSyntaxError
+
+        if getattr(pipe, "unet", None) is None:
+            raise ValueError(
+                "prompt_injection lanes need a UNet model with CLIP text encoders (SD 1.x/2.x, SDXL)"
+            )
+        mode = getattr(self.request, "prompt_syntax", "a1111")
+        try:
+            encoder = PromptEncoder(pipe, "comfy" if mode == "comfy" else "a1111")
+        except PromptSyntaxError as e:
+            raise ValueError(f"prompt_injection lanes: {e}") from e
+        empty = encoder.encode("").embeds  # one empty chunk, to pad shorter sequences
+        for lane in lanes:
+            pattern = INJECTION_PRESETS.get(lane.targets, lane.targets)
+            modules = [
+                (name, module)
+                for name, module in match_layers(pipe, pattern)
+                if name.endswith("attn2") or getattr(module, "is_cross_attention", False)
+            ]
+            if not modules:
+                raise ValueError(f"'{lane.targets}' matches no cross-attention layer of this model")
+            state = {
+                "lane": lane,
+                "embeds": encoder.encode(lane.prompt).embeds,
+                "empty": empty,
+                "on": self._active(lane, 0),
+                "layers": len(modules),
+            }
+            self.injections.append(state)
+            for _, module in modules:
+                self.hooks.append(
+                    module.register_forward_pre_hook(self._injection_hook(state), with_kwargs=True)
+                )
+        self.applied["prompt_injection"] = True
+
+    def _injection_hook(self, state: dict[str, Any]) -> Callable:
+        def pad(t: torch.Tensor, length: int, empty: torch.Tensor) -> torch.Tensor:
+            while t.shape[1] < length:  # add empty 77-token chunks
+                t = torch.cat([t, empty.expand(t.shape[0], -1, -1)], dim=1)
+            return t
+
+        def hook(_module, args, kwargs):
+            ehs = kwargs.get("encoder_hidden_states")
+            if not state["on"] or not torch.is_tensor(ehs):
+                return None
+            inject = state["embeds"].to(ehs.device, ehs.dtype)
+            empty = state["empty"].to(ehs.device, ehs.dtype)
+            if inject.shape[-1] != ehs.shape[-1]:
+                return None
+            cfg = bool(getattr(self.pipe, "do_classifier_free_guidance", self.cfg_active))
+            images = ehs.shape[0] // 2 if cfg else ehs.shape[0]
+            length = max(ehs.shape[1], inject.shape[1])
+            cond = pad(ehs[images:] if cfg else ehs, length, empty)
+            inject = pad(inject, length, empty).expand(images, -1, -1)
+            lane = state["lane"]
+            if lane.mode == "blend":
+                inject = torch.lerp(cond, inject, 0.5 if lane.value is None else float(lane.value))
+            new = torch.cat([pad(ehs[:images], length, empty), inject]) if cfg else inject
+            kwargs["encoder_hidden_states"] = new
+            return args, kwargs
+
+        return hook
 
     def _clamp(self, value: float) -> float:
         # CFG batch layout is fixed at the first step: keep CFG on (>1) or off (<=1)
@@ -295,6 +373,8 @@ class ModulationController(Probe):
             return cb_kwargs
         if self.layer_lanes:
             self._update_scales(nxt)
+        for state in self.injections:
+            state["on"] = self._active(state["lane"], nxt)
         if self.lora_names:
             self._update_loras(nxt)
         if self.dynamic_cfg:
@@ -322,6 +402,10 @@ class ModulationController(Probe):
         if self.layer_lanes:
             out["modulation_layers"] = {
                 lane.targets: len(names) for lane, names in self.layer_lanes
+            }
+        if self.injections:
+            out["prompt_injection_layers"] = {
+                s["lane"].targets: s["layers"] for s in self.injections
             }
         if self.notes:
             out["modulation_notes"] = self.notes

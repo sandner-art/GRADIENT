@@ -13,6 +13,8 @@ negative_prompt}, as the ComfyUI stylers use). The part of a name before ":" is 
 * before / after - the style's text (without `{prompt}`) before or after your prompt.
 * chunk - after your prompt, in its own 75-token chunk (BREAK), so on SD 1.x/2.x and SDXL
   the style is encoded apart from your words.
+* blocks - SDXL: the styled prompt (template) goes only into the blocks that carry style
+  (a prompt_injection lane on up_blocks.0.attentions.1); everything else reads your prompt.
 `style_start` > 0 adds the styles only from that fraction of the steps (prompt editing), so
 the composition comes from your prompt alone (SD 1.x/2.x and SDXL).
 
@@ -37,7 +39,7 @@ from gradient.core.config import get_data_dir, get_setting, resolve_project_path
 
 logger = logging.getLogger(__name__)
 
-POSITIONS = ("template", "before", "after", "chunk")
+POSITIONS = ("template", "before", "after", "chunk", "blocks")
 STYLE_SUFFIXES = (".csv", ".json")
 _WILDCARD = re.compile(r"\{([^{}]*\|[^{}]*)\}")
 _TAG = re.compile(r"<(lora|lyco|hypernet):([^:>]+)(?::([^:>]*))?(?::[^>]*)?>", re.IGNORECASE)
@@ -235,21 +237,43 @@ class Prepared:
     negative_prompt: str | None
     loras: list[dict[str, Any]] = field(default_factory=list)  # from tags, resolved
     params: dict[str, Any] = field(default_factory=dict)
+    injection: str | None = None  # style_position "blocks": the prompt for the style blocks
+    injection_start: float = 0.0
 
 
 def prepare(
-    request, seed: int, clip_syntax: bool = True, installed_loras: list[str] | None = None
+    request,
+    seed: int,
+    clip_syntax: bool = True,
+    installed_loras: list[str] | None = None,
+    style_blocks: bool = False,
 ) -> Prepared:
     """The prompts as rendered: styles applied, wildcards picked, LoRA tags taken out.
 
     `clip_syntax`: the model reads A1111 syntax (SD 1.x/2.x, SDXL, not `plain`), so the
-    `chunk` position (BREAK) and `style_start` (prompt editing) can be used.
+    `chunk` position (BREAK) and `style_start` (prompt editing) can be used. `style_blocks`:
+    the model has SDXL's style blocks (else `blocks` falls back to `after`).
     """
     prompt = request.prompt or ""
     negative = request.negative_prompt or ""
     params: dict[str, Any] = {}
     names = list(getattr(request, "styles", None) or [])
     position = getattr(request, "style_position", "template") or "template"
+    injection = None
+    if position == "blocks" and names and not style_blocks:
+        position = "after"
+        params["style_blocks_applied"] = False  # needs SDXL
+    if position == "blocks" and names:
+        found, missing = find_styles(names)
+        if missing:
+            params["styles_missing"] = missing
+        styled = prompt
+        for style in found:
+            styled = merge(styled, style.prompt, "template")
+            negative = merge(negative, style.negative_prompt, "template")
+        if found and styled != prompt:
+            injection = styled
+        names = []  # the main prompt stays as it is
     if names:
         found, missing = find_styles(names)
         if missing:
@@ -287,8 +311,13 @@ def prepare(
             params["lora_tags"] = [f"{k}:{n}:{w:g}" for k, n, w in tags]
             if unresolved:
                 params["lora_tags_missing"] = unresolved
+    if injection is not None:
+        if not plain:
+            injection = extract_tags(resolve_wildcards(injection, random.Random(seed)))[0]
+        params["style_injection"] = injection
     if prompt != (request.prompt or ""):
         params["styled_prompt"] = prompt
     if negative != (request.negative_prompt or ""):
         params["styled_negative_prompt"] = negative
-    return Prepared(prompt, negative, loras, params)
+    start = float(getattr(request, "style_start", 0.0) or 0.0)
+    return Prepared(prompt, negative, loras, params, injection, start if 0 < start < 1 else 0.0)

@@ -23,8 +23,8 @@ class LoRAParameter(BaseModel):
 class ModulationLane(BaseModel):
     """One lane on the denoising timeline, active for steps in [start, end) (fractions of the run)."""
 
-    type: Literal["guidance", "prompt", "attention_scale", "lora_weight"] = Field(
-        ..., description="What the lane changes while active"
+    type: Literal["guidance", "prompt", "attention_scale", "lora_weight", "prompt_injection"] = (
+        Field(..., description="What the lane changes while active")
     )
     start: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Start of the lane as a fraction of the steps"
@@ -40,14 +40,20 @@ class ModulationLane(BaseModel):
         description="guidance: CFG value; attention_scale: output scale (0 skips the layers); lora_weight: weight; prompt: blend factor (blend mode)",
     )
     prompt: str | None = Field(
-        default=None, description="prompt lanes: the prompt to switch/blend to"
+        default=None,
+        description="prompt and prompt_injection lanes: the prompt to switch/blend to or inject",
     )
     mode: Literal["replace", "blend"] = Field(
-        default="replace", description="prompt lanes: replace or blend the embeddings"
+        default="replace",
+        description="prompt and prompt_injection lanes: replace or blend the embeddings",
     )
     targets: str | None = Field(
         default=None,
-        description="attention_scale lanes: glob over attention layer names, e.g. 'up_blocks.*attn2' or 'transformer_blocks.1?.attn'",
+        description=(
+            "attention_scale and prompt_injection lanes: glob over attention layer names, e.g. "
+            "'up_blocks.*attn2' or 'transformer_blocks.1?.attn'; prompt_injection also takes "
+            "the presets 'sdxl-style' and 'sdxl-layout'"
+        ),
     )
     lora_index: int | None = Field(
         default=None, ge=0, description="lora_weight lanes: index into the request's loras"
@@ -59,8 +65,10 @@ class ModulationLane(BaseModel):
             raise ValueError("lane end must be greater than start")
         if self.type in ("guidance", "attention_scale", "lora_weight") and self.value is None:
             raise ValueError(f"{self.type} lanes need a value")
-        if self.type == "prompt" and not self.prompt:
-            raise ValueError("prompt lanes need a prompt")
+        if self.type in ("prompt", "prompt_injection") and not self.prompt:
+            raise ValueError(f"{self.type} lanes need a prompt")
+        if self.type == "prompt_injection" and not self.targets:
+            raise ValueError("prompt_injection lanes need targets (a preset or a layer pattern)")
         if self.type == "attention_scale" and not self.targets:
             raise ValueError("attention_scale lanes need targets (a layer-name pattern)")
         if self.type == "lora_weight" and self.lora_index is None:
@@ -94,12 +102,13 @@ class DiffusionTaskBase(BaseModel):
             "{prompt} in a style marks the place of the prompt"
         ),
     )
-    style_position: Literal["template", "before", "after", "chunk"] = Field(
+    style_position: Literal["template", "before", "after", "chunk", "blocks"] = Field(
         default="template",
         description=(
             "Where the styles' text goes: 'template' (A1111: into {prompt}, else after the "
-            "prompt), 'before' or 'after' the prompt, or 'chunk' (after it, in its own "
-            "75-token chunk via BREAK on SD 1.x/2.x and SDXL)"
+            "prompt), 'before' or 'after' the prompt, 'chunk' (after it, in its own 75-token "
+            "chunk via BREAK on SD 1.x/2.x and SDXL), or 'blocks' (SDXL: the styled prompt only "
+            "in the style blocks, up_blocks.0.attentions.1; the rest reads the prompt alone)"
         ),
     )
     style_start: float = Field(

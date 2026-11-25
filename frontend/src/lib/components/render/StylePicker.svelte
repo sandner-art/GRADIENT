@@ -262,8 +262,11 @@
 				{#if selected.length}
 					<button
 						type="button"
-						class="text-indigo-600 hover:underline dark:text-indigo-400"
-						title="Write the styled prompts into the prompt boxes and clear the styles"
+						class="text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+						disabled={($store.style_position ?? 'template') === 'blocks'}
+						title={($store.style_position ?? 'template') === 'blocks'
+							? 'Style blocks only can’t be written into the prompt box'
+							: 'Write the styled prompts into the prompt boxes and clear the styles'}
 						onclick={applyToPrompt}>Apply to prompt</button
 					>
 				{/if}
@@ -276,6 +279,11 @@
 					{#if preview.negative_prompt}
 						<p class="mt-1 break-words whitespace-pre-wrap text-gray-500 dark:text-gray-400">
 							Negative: {preview.negative_prompt}
+						</p>
+					{/if}
+					{#if preview.style_injection}
+						<p class="mt-1 text-gray-500 dark:text-gray-400">
+							Style blocks read: {preview.style_injection}
 						</p>
 					{/if}
 					{#if preview.loras.length}

@@ -121,6 +121,7 @@ The image's settings record what was used: `prompt_tokens` and `prompt_chunks`, 
 | Before the prompt | `cinematic photo, 35mm, film, a cat` |
 | After the prompt | `a cat, cinematic photo, 35mm, film` |
 | Own chunk | `a cat BREAK cinematic photo, 35mm, film`: on SD/SDXL your words and the style are encoded apart, so the style doesn't push your words out of the first chunk |
+| Style blocks only (SDXL) | the prompt stays `a cat`; the styled prompt (template) is read only by SDXL's style block (`up_blocks.0.attentions.1`), so the style changes colour, material and light but not the layout. Other models place the style after the prompt |
 
 *Style from … % of the steps* adds the styles later in the render (prompt editing, SD/SDXL): the first steps settle the composition from your prompt alone, the style then works on light, color and texture. 20–40 % keeps the layout of the unstyled image; 0 % is the usual way.
 
@@ -185,6 +186,7 @@ A lane changes one thing for part of the denoising run. `start` and `end` are fr
 | `guidance` | `value` | Sets the CFG scale (SD 1.5, SDXL, SD 3.5, PixArt, Kolors) |
 | `attention_scale` | `targets` (glob over attention layer names), `value` | Multiplies the output of the matching attention layers; `0` switches them off |
 | `lora_weight` | `lora_index`, `value` | Sets the weight of one of the request's `loras` |
+| `prompt_injection` | `prompt`, `targets` (a pattern, or `sdxl-style` / `sdxl-layout`), `mode`, `value` | The matching cross-attention layers read this prompt instead of the main one (UNet models: SD 1.x/2.x, SDXL); `blend` mixes the two |
 
 ```json
 "modulation": [
@@ -199,7 +201,8 @@ Notes:
 - `GET /api/v1/lab/layers?model_id=...` lists a model's attention layers and suggests patterns (`*attn2` = all cross-attention in a UNet; DiT models use names like `transformer_blocks.12.attn`). Several patterns can be comma-separated.
 - Guidance lanes can't switch CFG on or off mid-run, because the batch layout is fixed at the first step. Values stay above 1 if the run started with CFG, and at or below 1 if it didn't.
 - Prompt lanes need embeddings of equal length. That is always true for CLIP/T5-padded families (SD 1.5, SDXL, SD 3.5, FLUX.1); for models with variable-length text encoders, keep the prompts a similar length. A blend that is active on the very first step takes effect from step 2 (the image metadata notes this).
-- The image metadata records which lane types were applied (`modulation_applied`) and how many layers each pattern matched (`modulation_layers`).
+- Prompt injection puts a prompt into chosen blocks only. In SDXL, InstantStyle found that `up_blocks.0.attentions.1` carries style (colour, material, atmosphere) and `down_blocks.2.attentions.1` the layout: `sdxl-style` injects a style without moving the composition or adding the style's objects. Only the conditional half of CFG changes; the negative prompt stays. The *Style into SDXL style blocks* preset and the styles' *Style blocks only* position use it.
+- The image metadata records which lane types were applied (`modulation_applied`) and how many layers each pattern matched (`modulation_layers`, `prompt_injection_layers`).
 
 ### Gated feature models (DINOv3)
 

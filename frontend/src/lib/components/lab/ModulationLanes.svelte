@@ -19,7 +19,8 @@
 		{ id: 'prompt', label: 'Prompt', color: 'bg-indigo-500' },
 		{ id: 'guidance', label: 'Guidance', color: 'bg-amber-500' },
 		{ id: 'attention_scale', label: 'Attention scale', color: 'bg-teal-500' },
-		{ id: 'lora_weight', label: 'LoRA weight', color: 'bg-pink-500' }
+		{ id: 'lora_weight', label: 'LoRA weight', color: 'bg-pink-500' },
+		{ id: 'prompt_injection', label: 'Prompt injection', color: 'bg-violet-500' }
 	];
 	const colorOf = (t: ModulationLaneType) => TYPES.find((x) => x.id === t)?.color ?? 'bg-gray-500';
 
@@ -58,6 +59,20 @@
 			]
 		},
 		{
+			label: 'Style into SDXL style blocks',
+			hint: 'A style prompt only in up_blocks.0.attentions.1 (InstantStyle’s style block, SDXL).',
+			lanes: () => [
+				{
+					type: 'prompt_injection',
+					start: 0,
+					end: 1,
+					prompt: 'an oil painting, thick impasto brush strokes',
+					targets: 'sdxl-style',
+					mode: 'replace'
+				}
+			]
+		},
+		{
 			label: 'LoRA fades in',
 			hint: 'No LoRA for layout, full LoRA for detail (pick a LoRA in the base settings).',
 			lanes: () => [{ type: 'lora_weight', start: 0, end: 0.4, value: 0, lora_index: 0 }]
@@ -80,7 +95,15 @@
 			prompt: { type, start: 0, end: 0.3, prompt: '', mode: 'replace' },
 			guidance: { type, start: 0.5, end: 1, value: 2 },
 			attention_scale: { type, start: 0, end: 0.5, value: 0.5, targets: '*attn2' },
-			lora_weight: { type, start: 0, end: 0.5, value: 0, lora_index: 0 }
+			lora_weight: { type, start: 0, end: 0.5, value: 0, lora_index: 0 },
+			prompt_injection: {
+				type,
+				start: 0,
+				end: 1,
+				prompt: '',
+				targets: 'sdxl-style',
+				mode: 'replace'
+			}
 		};
 		lab.lanes.push(defaults[type]);
 	}
@@ -247,7 +270,7 @@
 								bind:value={lane.end}
 							/>
 						</div>
-						{#if lane.type === 'prompt'}
+						{#if lane.type === 'prompt' || lane.type === 'prompt_injection'}
 							<div class="w-28">
 								<label for="lane_mode_{i}" class="text-xs text-gray-600 dark:text-gray-400"
 									>Mode</label
@@ -258,7 +281,7 @@
 								</select>
 							</div>
 						{/if}
-						{#if lane.type !== 'prompt' || lane.mode === 'blend'}
+						{#if (lane.type !== 'prompt' && lane.type !== 'prompt_injection') || lane.mode === 'blend'}
 							<div class="w-24">
 								<label for="lane_value_{i}" class="text-xs text-gray-600 dark:text-gray-400">
 									{lane.type === 'guidance'
@@ -293,6 +316,43 @@
 							aria-label="Lane {i + 1} prompt"
 							bind:value={lane.prompt}
 						/>
+					{:else if lane.type === 'prompt_injection'}
+						<input
+							class="{ui.smallInput} mt-2"
+							placeholder="prompt for the chosen blocks, e.g. an oil painting, impasto"
+							aria-label="Lane {i + 1} injected prompt"
+							bind:value={lane.prompt}
+						/>
+						<div class="mt-2 flex gap-2">
+							<select
+								class={ui.smallInput}
+								aria-label="Lane {i + 1} blocks"
+								value={['sdxl-style', 'sdxl-layout'].includes(lane.targets ?? '')
+									? lane.targets
+									: 'custom'}
+								onchange={(e) =>
+									(lane.targets =
+										e.currentTarget.value === 'custom'
+											? 'up_blocks.*attn2'
+											: e.currentTarget.value)}
+							>
+								<option value="sdxl-style">SDXL style block (up_blocks.0.attentions.1)</option>
+								<option value="sdxl-layout">SDXL layout block (down_blocks.2.attentions.1)</option>
+								<option value="custom">Layers matching a pattern…</option>
+							</select>
+							{#if !['sdxl-style', 'sdxl-layout'].includes(lane.targets ?? '')}
+								<input
+									class={ui.smallInput}
+									list="lane_layer_suggestions"
+									placeholder="up_blocks.*attn2"
+									aria-label="Lane {i + 1} injection layers"
+									bind:value={lane.targets}
+								/>
+							{/if}
+						</div>
+						<p class={ui.help}>
+							These cross-attention layers read this prompt instead of the main one (UNet models).
+						</p>
 					{:else if lane.type === 'attention_scale'}
 						<div class="mt-2 flex gap-2">
 							<input

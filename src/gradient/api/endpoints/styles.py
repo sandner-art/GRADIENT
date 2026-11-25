@@ -56,7 +56,7 @@ class StylePreviewRequest(BaseModel):
     prompt: str = ""
     negative_prompt: str | None = ""
     styles: list[str] | None = None
-    style_position: Literal["template", "before", "after", "chunk"] = "template"
+    style_position: Literal["template", "before", "after", "chunk", "blocks"] = "template"
     style_start: float = Field(default=0.0, ge=0.0, lt=1.0)
     prompt_syntax: Literal["a1111", "comfy", "plain"] = "a1111"
     seed: int | None = Field(default=None, description="Picks {a|b} wildcard options")
@@ -68,7 +68,7 @@ async def preview(body: StylePreviewRequest = Body(...)):
         family = model_profile(body.model_id)[0] if body.model_id else None
         clip = body.prompt_syntax != "plain" and family in ("sd15", "sdxl")
         seed = resolve_seed(body.seed) if body.seed is not None else 0
-        prepared = styles.prepare(body, seed, clip_syntax=clip)
+        prepared = styles.prepare(body, seed, clip_syntax=clip, style_blocks=family == "sdxl")
         counts = {}
         if body.model_id and family in ("sd15", "sdxl"):
             counts = {
@@ -81,6 +81,7 @@ async def preview(body: StylePreviewRequest = Body(...)):
             "prompt": prepared.prompt,
             "negative_prompt": prepared.negative_prompt,
             "loras": prepared.loras,
+            "style_injection": prepared.injection,
             "notes": prepared.params,
             "model_family": family,
             "reads_syntax": clip,
