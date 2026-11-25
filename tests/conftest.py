@@ -68,6 +68,14 @@ def tiny_sd3(workspace: Path) -> str:
 
 
 @pytest.fixture(scope="session")
+def tiny_sdxl(workspace: Path) -> str:
+    """Tiny random SDXL pipeline (two CLIP text encoders)."""
+    from helpers import build_tiny_sdxl
+
+    return _installed(workspace, "tiny-sdxl", build_tiny_sdxl)
+
+
+@pytest.fixture(scope="session")
 def tiny_flux2(workspace: Path) -> str:
     """Tiny random FLUX.2 [klein] pipeline (Qwen3 text encoder, 3 double-stream blocks)."""
     from helpers import build_tiny_flux2_klein

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 (unreleased)
+
+### Prompts
+- **Long prompts and A1111 weights** (SD 1.x, SD 2.x, SDXL): prompts longer than 75 tokens used to be cut off after the 77th token (diffusers' limit), which silently dropped the end of long prompts and styles. They now continue in further 75-token chunks, as in A1111 and ComfyUI, broken after a comma where one is near. `(word:1.2)`, `(word)`, `[word]`, `\(` escapes and `BREAK` work as in A1111, and so do prompt editing (`[cat:dog:0.5]`, `[to:when]`, `[from::when]`) and alternation (`[cat|dog]`), switched at the right steps during the render (also in the negative prompt). `prompt_syntax` (form: *Advanced → Prompt syntax*; XYZ axis) picks how weights are applied: `a1111` (default: scale, then restore the chunk's mean), `comfy` (scale away from the empty prompt, as ComfyUI) or `plain` (the text as it is, as before). Plain prompts of at most 75 tokens render exactly as before. Images record `prompt_tokens`, `prompt_chunks`, `prompt_weights_applied` and `prompt_schedule`; a prompt that was cut has `prompt_truncated`. *Use settings* and the Explorer treat images saved before 0.10 as `plain`, so they render as they did. Lab tools that map words to token positions (attention maps, token ablation, the Explorer's word attention) read prompts as plain text.
+- **Embeddings picker** (textual inversion): an *Embeddings* row under the LoRAs lists the installed embeddings with their model family (SD 1.x, SD 2.x, SDXL) and adds one to the prompt or the negative prompt. As in A1111 you can also just type an embedding's name in a prompt (ComfyUI's `embedding:name` works too): GRADIENT loads every installed embedding it finds there. SDXL embeddings (`clip_l` + `clip_g`) now load into both text encoders; A1111 `.pt` and `.safetensors` (`emb_params`) and diffusers files are read. Chips show the embeddings in use; *✕* takes one out of the prompt. An embedding for another model family is not loaded: the job's result has `embeddings_skipped` (the image's settings also the reasons), and the queue shows it, like LoRAs that don't fit, as *Not applied*. Models with a T5 or LLM text encoder (SD3, FLUX…) don't use embeddings. API: `GET /system/models/embeddings/details?model_id=`.
+
 ## 0.9.1 (unreleased)
 
 ### Working with other apps (ArtAgents LoRA tests)

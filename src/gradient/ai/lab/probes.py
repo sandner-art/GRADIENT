@@ -28,6 +28,8 @@ class Probe:
 
     #: tensors the probe needs in callback_kwargs (intersected with the pipeline's allowed list)
     tensor_inputs: tuple[str, ...] = ()
+    #: the probe reads the pipeline's own prompt encoding (77 tokens): no A1111 syntax encoding
+    needs_plain_prompt: bool = False
 
     def attach(self, pipe, entry, total_steps: int, kwargs: dict[str, Any]) -> None:  # noqa: B027
         pass
@@ -141,6 +143,7 @@ class ModulationController(Probe):
         self.text_keys: list[str] = []
         self.prompt_tensors: dict[str, dict[str, torch.Tensor]] = {}
         self.base_prompt = request.prompt
+        self.needs_plain_prompt = any(lane.type == "prompt" for lane in self.lanes)
         self.lora_names: list[str] = []
         self.lora_base: list[float] = []
         self.lora_current: list[float] | None = None
@@ -415,6 +418,8 @@ class _RecordingProcessor:
 
 
 class AttentionRecorder(Probe):
+    needs_plain_prompt = True  # maps attention to the words of the first 77 tokens
+
     def __init__(self, layers: str = "*attn2", start: float = 0.0, end: float = 1.0) -> None:
         self.pattern = layers
         self.start, self.end = start, end

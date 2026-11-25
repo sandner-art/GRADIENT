@@ -116,7 +116,8 @@ const COPY_KEYS = [
 	'loras',
 	'embeddings',
 	'vae_id',
-	'quantization'
+	'quantization',
+	'prompt_syntax'
 ] as const;
 
 /** Settings of a generation, ready for a form store (seed optional). */
@@ -126,6 +127,7 @@ export function settingsFrom(
 ): Partial<Text2ImageRequest> {
 	const out: Record<string, unknown> = {};
 	for (const key of COPY_KEYS) if (key in params) out[key] = params[key];
+	out.prompt_syntax ??= 'plain'; // renders before 0.10 read prompts as plain text
 	if (typeof out.guidance_scale !== 'number') delete out.guidance_scale; // scheduled CFG strings
 	out.seed = keepSeed ? ((params.seed as number | null) ?? null) : null;
 	return out as Partial<Text2ImageRequest>;

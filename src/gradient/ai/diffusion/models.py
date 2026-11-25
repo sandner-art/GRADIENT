@@ -77,6 +77,16 @@ class DiffusionTaskBase(BaseModel):
     model_id: str = Field(..., description="Identifier for the base model (path or HF ID)")
     prompt: str
     negative_prompt: str | None = ""  # Allow empty string
+    prompt_syntax: Literal["a1111", "comfy", "plain"] = Field(
+        default="a1111",
+        description=(
+            "How SD 1.x/2.x and SDXL read the prompts: 'a1111' (weights like (word:1.2), "
+            "prompts longer than 75 tokens, BREAK, [from:to:when] editing and [a|b] "
+            "alternation; weights applied as A1111 does), 'comfy' (the same, weights applied "
+            "as ComfyUI does) or 'plain' (the text as it is, cut at 77 tokens). Other model "
+            "families always get the text as it is."
+        ),
+    )
     height: int = Field(default=512, gt=0)
     width: int = Field(default=512, gt=0)
     num_inference_steps: int = Field(default=25, gt=0)

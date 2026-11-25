@@ -148,10 +148,14 @@ describe('settingsFrom', () => {
 			prompt: 'a cat',
 			loras: [{ name: 'ink', weight: 0.7 }],
 			quantization: 'bnb-4bit',
+			prompt_syntax: 'plain', // saved before 0.10: prompts were read as plain text
 			seed: null
 		});
 	});
 	it('keeps the seed when asked', () => {
 		expect(settingsFrom(params, true).seed).toBe(42);
+	});
+	it('keeps the prompt syntax the image was rendered with', () => {
+		expect(settingsFrom({ ...params, prompt_syntax: 'comfy' }, false).prompt_syntax).toBe('comfy');
 	});
 });

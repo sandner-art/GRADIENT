@@ -34,8 +34,10 @@ from gradient.database.models import ExperimentRun, GeneratedOutput
 from gradient.database.session import get_db_session, update_run_status
 from gradient.gallery.metadata import output_fields, png_info
 
+from . import prompt_syntax
 from .guidance import is_constant, parse_guidance_schedule
 from .loading import DYNAMIC_CFG_FAMILIES, LoadedPipeline, get_pipeline
+from .loading_embeddings import embeddings_in_prompts, installed_embeddings, normalize_prompt
 from .models import (
     DiffusionTaskBase,
     ImageResult,
@@ -107,6 +109,17 @@ def _encode_png(img: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _steps_run(request: DiffusionTaskBase, task: str, strength: float | None) -> int:
+    """Denoising steps the pipeline will run (image-to-image runs `strength` of them)."""
+    steps = max(
+        1,
+        (len(request.custom_sigmas) - 1) if request.custom_sigmas else request.num_inference_steps,
+    )
+    if task == "image2image" and strength is not None:
+        return max(1, int(steps * strength))
+    return steps
+
+
 @dataclass
 class GenerationResult:
     images: list[Image.Image]
@@ -131,12 +144,23 @@ def generate_images(
     every step boundary; `call_overrides` replaces pipeline kwargs (e.g. precomputed
     prompt embeddings for token ablation).
     """
+    prompt = normalize_prompt(request.prompt) or ""
+    negative_prompt = normalize_prompt(request.negative_prompt)
+    # embeddings named in either prompt load by themselves, as in A1111
+    embeddings = list(
+        dict.fromkeys(
+            [
+                *(request.embeddings or []),
+                *embeddings_in_prompts([prompt, negative_prompt], installed_embeddings()),
+            ]
+        )
+    )
     pipe, entry = get_pipeline(
         request.model_id,
         task=task,
         vae_id=request.vae_id,
         loras=request.loras,
-        embeddings=request.embeddings,
+        embeddings=embeddings,
         quantization=request.quantization,
     )
     call_signature = inspect.signature(pipe.__call__).parameters
@@ -157,18 +181,28 @@ def generate_images(
     ]
     if skipped:
         params["loras_skipped"] = skipped
+    if embeddings:
+        params["embeddings"] = [e for e in embeddings if e in entry.embeddings]
+        missed = {
+            e: entry.embeddings_skipped.get(e, "not found in the embeddings folders")
+            for e in embeddings
+            if e not in entry.embeddings
+        }
+        if missed:
+            params["embeddings_skipped"] = list(missed)
+            params["embeddings_skipped_reasons"] = missed
 
     kwargs: dict[str, Any] = {
-        "prompt": request.prompt,
+        "prompt": prompt,
         "height": request.height,
         "width": request.width,
         "num_inference_steps": request.num_inference_steps,
         "num_images_per_prompt": num_outputs,
         "output_type": output_type,
     }
-    if request.negative_prompt and "negative_prompt" in call_params:
-        kwargs["negative_prompt"] = request.negative_prompt
-    elif request.negative_prompt:
+    if negative_prompt and "negative_prompt" in call_params:
+        kwargs["negative_prompt"] = negative_prompt
+    elif negative_prompt:
         params["negative_prompt_applied"] = False
 
     # Noise schedule
@@ -228,6 +262,30 @@ def generate_images(
             )
         all_probes.insert(0, ModulationController(request.modulation, request))
 
+    # A1111 prompt syntax (weights, long prompts, editing) for CLIP models
+    syntax_probe = None
+    plain_needed = any(getattr(p, "needs_plain_prompt", False) for p in all_probes)
+    if (
+        request.prompt_syntax != "plain"
+        and not plain_needed
+        and "prompt_embeds" in call_params
+        and not (call_overrides and "prompt_embeds" in call_overrides)
+        and (callbacks_enabled or "[" not in prompt + (negative_prompt or ""))
+    ):
+        syntax_probe = prompt_syntax.plan(
+            pipe,
+            prompt,
+            negative_prompt,
+            request.prompt_syntax,
+            _steps_run(request, task, strength),
+        )
+    if syntax_probe is not None:
+        all_probes.append(syntax_probe)
+    elif (count := prompt_syntax.token_count(pipe, prompt)) and count > 75:
+        params["prompt_truncated"] = True  # the pipeline reads only the first 75 tokens
+        if plain_needed and request.prompt_syntax != "plain":
+            params["prompt_syntax_applied"] = False
+
     from gradient.ai.diffusion import preview as live_preview
 
     if callbacks_enabled and live_preview.enabled():
@@ -269,9 +327,7 @@ def generate_images(
             kwargs.pop("negative_prompt", None)
 
     kwargs = {k: v for k, v in kwargs.items() if k in call_params or k == "callback_on_step_end"}
-    probe_steps = est_steps
-    if task == "image2image" and strength is not None:
-        probe_steps = max(1, int(est_steps * strength))
+    probe_steps = _steps_run(request, task, strength)
 
     vae = getattr(pipe, "vae", None)
     if vae is not None and hasattr(vae, "enable_tiling"):

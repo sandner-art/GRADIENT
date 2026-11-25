@@ -73,6 +73,36 @@ async def get_embeddings():
     return list_model_names("embeddings")
 
 
+@router.get("/system/models/embeddings/details", tags=["System Info"])
+async def get_embedding_details(model_id: str | None = Query(None)):
+    """Installed embeddings with their token, model family and fit for `model_id`.
+
+    `fits` is true/false when both families are known, else null. Write `token` in the
+    prompt (or negative prompt) to use an embedding.
+    """
+    from gradient.ai.diffusion import loading_embeddings as emb
+
+    def details():
+        family = loading.model_profile(model_id)[0] if model_id else None
+        rows = []
+        for name in emb.installed_embeddings():
+            info = emb.embedding_info(name)
+            rows.append(
+                {
+                    "name": info.name,
+                    "token": info.token,
+                    "family": info.family,
+                    "family_label": emb.FAMILY_LABELS.get(info.family or ""),
+                    "vectors": info.vectors,
+                    "fits": emb.fits(info.family, family),
+                    "error": info.error,
+                }
+            )
+        return {"model_family": family, "embeddings": rows}
+
+    return await asyncio.to_thread(details)
+
+
 @router.get("/system/models/vae", response_model=list[str], tags=["System Info"])
 async def get_vaes():
     return list_model_names("vae")

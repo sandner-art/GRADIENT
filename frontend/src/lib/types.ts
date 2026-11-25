@@ -7,10 +7,13 @@ export interface ImageResult {
 	parameters: Record<string, any>; // Dictionary for parameters used
 }
 
+export type PromptSyntax = 'a1111' | 'comfy' | 'plain';
+
 export interface DiffusionTaskBase {
 	model_id: string;
 	prompt: string;
 	negative_prompt?: string | null; // Allow null
+	prompt_syntax?: PromptSyntax;
 	height?: number;
 	width?: number;
 	num_inference_steps?: number;
@@ -386,7 +389,13 @@ export interface QueueJob {
 	};
 	run_uuid: string | null;
 	error: string | null;
-	result: { run_uuid?: string; outputs?: JobOutputRef[]; performance_ms?: number } | null;
+	result: {
+		run_uuid?: string;
+		outputs?: JobOutputRef[];
+		performance_ms?: number;
+		loras_skipped?: string[];
+		embeddings_skipped?: string[];
+	} | null;
 	position: number | null;
 	retryable: boolean;
 	model_id: string | null;

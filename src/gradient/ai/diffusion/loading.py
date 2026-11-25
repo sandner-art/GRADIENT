@@ -78,6 +78,7 @@ class LoadedPipeline:
     derived: dict[str, DiffusionPipeline] = field(default_factory=dict)
     lora_signature: tuple = ()
     embeddings: set[str] = field(default_factory=set)
+    embeddings_skipped: dict[str, str] = field(default_factory=dict)  # name -> reason
     # LoRA adapters kept loaded on this pipeline: LoRA name -> adapter name (LRU order)
     adapters: "OrderedDict[str, str]" = field(default_factory=OrderedDict)
     active_adapters: list[str] = field(default_factory=list)
@@ -572,9 +573,17 @@ def get_pipeline(
     if signature != entry.lora_signature:
         activate_loras(pipe, entry, loras)  # loads new LoRAs only; weights are a set_adapters call
         entry.lora_signature = signature
-    if embeddings:
-        entry.embeddings |= load_textual_inversions(
-            pipe, [e for e in embeddings if e not in entry.embeddings]
+    wanted = [
+        e
+        for e in embeddings or []
+        if e not in entry.embeddings and e not in entry.embeddings_skipped
+    ]
+    if wanted:
+        loaded, skipped = load_textual_inversions(pipe, wanted)
+        entry.embeddings |= loaded
+        # remember real misfits; a missing file is looked for again next time
+        entry.embeddings_skipped.update(
+            {n: why for n, why in skipped.items() if not why.startswith("not found")}
         )
     return pipe, entry
 

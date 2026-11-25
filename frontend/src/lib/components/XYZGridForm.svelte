@@ -62,7 +62,8 @@
 		'height',
 		'scheduler_id',
 		'model_id',
-		'quantization' // e.g. none, torchao-int8, bnb-4bit: compare precision side by side
+		'quantization', // e.g. none, torchao-int8, bnb-4bit: compare precision side by side
+		'prompt_syntax' // a1111, comfy, plain: how weights and long prompts are read
 		// TODO: Add 'strength' if allowing Img2Img base params? Needs careful handling.
 		// TODO: Add LoRA weights, ControlNet weights, VAE etc. later
 	];

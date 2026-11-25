@@ -72,6 +72,12 @@ def _image_summary(response) -> dict[str, Any]:
     )
     if skipped:
         summary["loras_skipped"] = skipped
+    # embeddings for another model family (or missing files) were not used
+    missed = sorted(
+        {n for im in response.images for n in (im.parameters or {}).get("embeddings_skipped") or []}
+    )
+    if missed:
+        summary["embeddings_skipped"] = missed
     return summary
 
 

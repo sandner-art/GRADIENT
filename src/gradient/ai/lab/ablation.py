@@ -83,6 +83,7 @@ def token_ablation(request: AblationRequest) -> AblationResponse:
     start = time.time()
     base = request.base_request.model_copy(deep=True)
     base.seed = resolve_seed(base.seed)
+    base.prompt_syntax = "plain"  # masks token embeddings of the pipeline's own encoding
     words = request.words or content_words(base.prompt, request.max_words)
     words = words[: request.max_words]
     if not words:

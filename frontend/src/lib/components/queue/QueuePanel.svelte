@@ -359,6 +359,14 @@
 								</span>
 							</div>
 							{#if job.error}<p class="mt-1 text-xs break-words text-red-600">{job.error}</p>{/if}
+							{#if job.result?.loras_skipped?.length || job.result?.embeddings_skipped?.length}
+								<p class="mt-1 text-xs break-words text-amber-700 dark:text-amber-300">
+									Not applied (other model family or missing): {[
+										...(job.result.loras_skipped ?? []),
+										...(job.result.embeddings_skipped ?? [])
+									].join(', ')}
+								</p>
+							{/if}
 							{#if ids.length}
 								<div class="mt-2 flex gap-1">
 									{#each ids.slice(0, 6) as id, k (id)}

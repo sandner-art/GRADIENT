@@ -63,13 +63,15 @@ const REQUEST_KEYS = [
 	'loras',
 	'embeddings',
 	'vae_id',
-	'quantization'
+	'quantization',
+	'prompt_syntax'
 ] as const;
 
 /** A render request from an image's saved parameters (null-safe, constant guidance). */
 export function requestFromParams(params: Record<string, unknown>): Text2ImageRequest {
 	const out: Record<string, unknown> = { num_outputs: 1 };
 	for (const key of REQUEST_KEYS) if (params[key] !== undefined) out[key] = params[key];
+	out.prompt_syntax ??= 'plain'; // renders before 0.10 read prompts as plain text
 	if (typeof out.guidance_scale !== 'number') delete out.guidance_scale;
 	if (out.quantization === 'none') out.quantization = null;
 	return out as unknown as Text2ImageRequest;

@@ -82,9 +82,36 @@ A verdict sums it up per precision, the strips show reference | quantized | diff
 
 ### Fast rendering with LoRAs
 
-LoRAs stay loaded on the model, so changing a weight, switching between LoRAs you've used, or rendering without any (*✕* removes them) needs no reloading. Up to `performance.max_loaded_loras` (default 6) LoRAs are kept per model; the least recently used one is unloaded when you go over. A LoRA must match the model family (an SD 1.5 LoRA won't apply to SDXL): a LoRA that matches no layers of the model is skipped with a warning in the log, and a file that can't be loaded at all stops the job with an error.
+LoRAs stay loaded on the model, so changing a weight, switching between LoRAs you've used, or rendering without any (*✕* removes them) needs no reloading. Up to `performance.max_loaded_loras` (default 6) LoRAs are kept per model; the least recently used one is unloaded when you go over. A LoRA must match the model family (an SD 1.5 LoRA won't apply to SDXL): a LoRA that matches no layers of the model is skipped (the finished job in the queue says *Not applied*), and a file that can't be loaded at all stops the job with an error.
 
 For quick everyday work on modest GPUs, SD 1.5 at 512×512 with 20–25 steps, or SDXL-Turbo / LCM-LoRA models at 1–8 steps, render in seconds. The XYZ grid's `loras` axis compares LoRAs or weights side by side with the same seed.
+
+### Prompt syntax: weights, long prompts, prompt editing
+
+For SD 1.x, SD 2.x and SDXL models, prompts are read as in A1111:
+
+| Write | Effect |
+|---|---|
+| `(word:1.3)`, `(word)`, `((word))` | more weight: ×1.3, ×1.1, ×1.21 |
+| `(word:0.7)`, `[word]` | less weight: ×0.7, ÷1.1 |
+| `\(` `\)` `\[` `\]` | plain brackets |
+| a prompt longer than 75 tokens | continues in another 75-token chunk (the end is no longer cut off) |
+| `BREAK` | starts a new chunk: what follows is encoded apart from what comes before |
+| `[cat:dog:0.5]` | *cat* for the first half of the steps, then *dog* (`0.5` = fraction; `12` = from step 12) |
+| `[snow:0.6]`, `[snow::0.6]` | *snow* added from 60 %, or removed at 60 % |
+| `[cat\|dog]` | *cat* and *dog* on alternate steps |
+
+CLIP reads 75 tokens at a time. Without chunking (and in diffusers) everything after the 77th token is dropped, so a long style or a long prompt lost its end. With chunks, each part is encoded on its own and the parts are joined; a chunk ends after a comma when one is among its last 20 tokens, so phrases stay together. The first chunk also gives SDXL its pooled embedding, so put what matters most early.
+
+*Advanced → Prompt syntax* chooses how weights are applied: **A1111** scales a token's embedding and then restores the chunk's average (the default), **ComfyUI weights** scales the token's difference from the empty prompt instead (weights act more gently and more linearly), and **Plain text** sends the text as it is (cut at 77 tokens, as before 0.10). The XYZ grid has a `prompt_syntax` axis to compare them. Prompts without any of this syntax, of up to 75 tokens, render exactly as before. Other model families (FLUX, SD 3.5, Qwen-Image…) get the text as it is: their T5 or LLM encoders read long prompts by themselves.
+
+The image's settings record what was used: `prompt_tokens` and `prompt_chunks`, `prompt_weights_applied`, and `prompt_schedule` (the prompt at each step where it changes). `prompt_truncated` marks a prompt that was cut. *Use settings* and the Explorer render images saved before 0.10 with plain text, as they were made. Attention maps, token ablation and the Explorer's word attention map words to token positions, so they always read the prompt as plain text.
+
+### Embeddings (textual inversion)
+
+Put embedding files (`.safetensors`, `.pt`, `.bin`) into `models/embeddings` or download them in the Models tab (*Embedding*). Under the LoRAs, **Embeddings** lists them with their model family; pick one and press **+ Prompt** or **+ Negative** (negative embeddings such as *EasyNegative* belong in the negative prompt). That writes the embedding's token, its file name without extension, into the prompt. Typing the name yourself works the same, as in A1111, and so does ComfyUI's `embedding:name`. The chips below show which embeddings the prompts use; *✕* removes one.
+
+Embeddings work with SD 1.x, SD 2.x and SDXL models, and each one only with its own family: an SD 1.5 embedding has no effect on SDXL, and SDXL embeddings (two tensors, `clip_l` and `clip_g`) need an SDXL model. The list marks embeddings for another family as *(other model family)*; if you use one anyway, the render skips it and the finished job in the queue says *Not applied*. Loaded embeddings stay loaded with the model, so switching between them costs nothing. An embedding whose name is an ordinary word for the tokenizer (`style.pt`) can't be told apart from that word: rename the file.
 
 ## Picking settings for a model
 

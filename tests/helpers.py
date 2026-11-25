@@ -108,6 +108,64 @@ def build_tiny_sd(path: Path, seed: int = 0) -> Path:
     return path
 
 
+def build_tiny_sdxl(path: Path, seed: int = 0) -> Path:
+    """Tiny random StableDiffusionXLPipeline: two CLIP text encoders (16 wide each)."""
+    import torch
+    from diffusers import (
+        AutoencoderKL,
+        EulerDiscreteScheduler,
+        StableDiffusionXLPipeline,
+        UNet2DConditionModel,
+    )
+    from transformers import CLIPTokenizer
+
+    torch.manual_seed(seed)
+    src = path.parent / f".{path.name}-src"
+    text_encoder, tokenizer = _clip_pair(src / "clip_l", hidden=16)
+    text_encoder_2, _ = _clip_pair(src / "clip_g", hidden=16, with_projection=True)
+    tokenizer_2 = CLIPTokenizer.from_pretrained(str(src / "clip_g"), pad_token="!")  # as SDXL
+    unet = UNet2DConditionModel(
+        block_out_channels=(8, 16),
+        layers_per_block=1,
+        sample_size=8,
+        in_channels=4,
+        out_channels=4,
+        down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+        up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+        cross_attention_dim=32,
+        attention_head_dim=2,
+        norm_num_groups=4,
+        use_linear_projection=True,
+        addition_embed_type="text_time",
+        addition_time_embed_dim=8,
+        projection_class_embeddings_input_dim=16 + 6 * 8,
+    )
+    vae = AutoencoderKL(
+        block_out_channels=(8, 16),
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownEncoderBlock2D", "DownEncoderBlock2D"),
+        up_block_types=("UpDecoderBlock2D", "UpDecoderBlock2D"),
+        latent_channels=4,
+        norm_num_groups=4,
+        sample_size=16,
+    )
+    pipe = StableDiffusionXLPipeline(
+        vae=vae,
+        text_encoder=text_encoder,
+        text_encoder_2=text_encoder_2,
+        tokenizer=tokenizer,
+        tokenizer_2=tokenizer_2,
+        unet=unet,
+        scheduler=EulerDiscreteScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", steps_offset=1
+        ),
+        force_zeros_for_empty_prompt=True,
+    )
+    pipe.save_pretrained(str(path))
+    return path
+
+
 # --------------------------------------------------------------------------- tiny DiT pipelines
 WORDS = (
     "a an the of on in at with and red blue green dog cat lighthouse rocky coast sunset dramatic clouds "

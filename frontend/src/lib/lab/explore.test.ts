@@ -35,6 +35,8 @@ describe('explorer sessions from saved images', () => {
 		expect(req).toMatchObject({ model_id: 'sd15', prompt: 'a lighthouse', seed: 7, width: 512 });
 		expect(req.guidance_scale).toBeUndefined(); // scheduled guidance is not a number
 		expect(req.quantization).toBeNull();
+		expect(req.prompt_syntax).toBe('plain'); // saved before 0.10
+		expect(requestFromParams({ ...params, prompt_syntax: 'a1111' }).prompt_syntax).toBe('a1111');
 		expect(pathFromParams(params)).toHaveLength(1);
 		expect(pathFromParams({})).toEqual([]);
 	});

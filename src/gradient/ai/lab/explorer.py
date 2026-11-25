@@ -902,6 +902,7 @@ def _word_maps(pipe, plain: Text2ImageRequest, words: list[str], method: str, fm
     if method == "attention":
         if getattr(pipe, "unet", None) is not None:
             recorder = AttentionRecorder("*attn2", 0.0, 1.0)
+            plain = plain.model_copy(update={"prompt_syntax": "plain"})
             image = generate_images(plain, probes=[recorder]).images[0]
             f = getattr(pipe, "vae_scale_factor", 8)
             maps = recorder.token_maps(plain.height // f, plain.width // f)

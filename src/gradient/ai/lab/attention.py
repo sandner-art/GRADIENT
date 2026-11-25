@@ -23,6 +23,7 @@ def attention_maps(request: AttentionMapRequest) -> AttentionMapResponse:
         raise ValueError("end must be greater than start")
     base = request.base_request.model_copy(deep=True)
     base.seed = resolve_seed(base.seed)
+    base.prompt_syntax = "plain"  # token positions of the pipeline's own encoding
 
     recorder = AttentionRecorder(request.layers, request.start, request.end)
     result = generate_images(base, probes=[recorder])

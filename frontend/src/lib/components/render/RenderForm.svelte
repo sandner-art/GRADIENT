@@ -7,6 +7,7 @@
 	import { get } from '#lib/apiClient.js';
 	import QuantizationSelect from '#lib/components/shared/QuantizationSelect.svelte';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
+	import { addToken, removeToken, usedEmbeddings, type EmbeddingDetail } from '#lib/embeddings.js';
 	import * as ui from '#lib/lab/ui.js';
 	import { rememberFormJobs, submitJob } from '#lib/stores/queue.svelte.js';
 	import { notify, sendToLab } from '#lib/stores/ui.svelte.js';
@@ -14,6 +15,7 @@
 		ImageToImageRequest,
 		LoRAParameter,
 		PresetRead,
+		PromptSyntax,
 		Text2ImageRequest
 	} from '#lib/types.js';
 	import { apiErrorMessage, plainSchedulerName } from '#lib/utils/format.js';
@@ -38,7 +40,8 @@
 	let batchCount = $state(1);
 	let perLine = $state(false);
 	let showAdvanced = $state(false);
-	let embeddingInput = $state('');
+	let embeddingDetails = $state<EmbeddingDetail[]>([]);
+	let pickedEmbedding = $state('');
 	let sigmasText = $state('');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
@@ -84,6 +87,21 @@
 		if (stored) showAdvanced = true;
 	});
 
+	// embeddings: the list says which ones fit the selected model
+	let embeddingsFor: string | null = null;
+	$effect(() => {
+		const id = $store.model_id;
+		if (id === embeddingsFor) return;
+		embeddingsFor = id;
+		get<{ embeddings: EmbeddingDetail[] }>(
+			`/system/models/embeddings/details?model_id=${encodeURIComponent(id ?? '')}`
+		)
+			.then((r) => {
+				if (embeddingsFor === id) embeddingDetails = r.embeddings;
+			})
+			.catch(() => (embeddingDetails = []));
+	});
+
 	// presets follow the model
 	let presetsFor = '';
 	$effect(() => {
@@ -123,11 +141,15 @@
 	function setLoras(next: LoRAParameter[]) {
 		set('loras', next);
 	}
-	function addEmbedding() {
-		const name = embeddingInput.trim();
-		if (name && !($store.embeddings ?? []).includes(name))
-			set('embeddings', [...($store.embeddings ?? []), name]);
-		embeddingInput = '';
+	// embeddings are used by writing their token in a prompt, as in A1111
+	const embeddingsInUse = $derived(
+		usedEmbeddings($store.prompt, $store.negative_prompt, embeddingDetails)
+	);
+	function insertEmbedding(where: 'prompt' | 'negative_prompt') {
+		const picked = embeddingDetails.find((e) => e.name === pickedEmbedding);
+		if (!picked) return;
+		set(where, addToken($store[where], picked.token));
+		pickedEmbedding = '';
 	}
 
 	// ---- init image (image mode)
@@ -189,7 +211,8 @@
 			loras: loras.length ? loras : null,
 			embeddings: s.embeddings?.length ? s.embeddings : null,
 			vae_id: s.vae_id || null,
-			quantization: s.quantization || null
+			quantization: s.quantization || null,
+			prompt_syntax: s.prompt_syntax || undefined
 		};
 		if (mode === 'image') {
 			base.image_base64 = s.image_base64;
@@ -444,6 +467,79 @@
 				{/if}
 			</div>
 
+			<!-- textual inversion embeddings -->
+			<div>
+				<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+					<span class={ui.label}>Embeddings</span>
+					{#if embeddingDetails.length}
+						<div class="flex items-center gap-2">
+							<select
+								class={ui.sized(ui.smallInput, 'w-48')}
+								aria-label="Embedding to add"
+								bind:value={pickedEmbedding}
+							>
+								<option value="">— choose —</option>
+								{#each embeddingDetails as e (e.name)}
+									<option value={e.name}
+										>{e.token}{e.family_label ? ` · ${e.family_label}` : ''}{e.fits === false
+											? ' (other model family)'
+											: ''}</option
+									>
+								{/each}
+							</select>
+							<button
+								type="button"
+								class="text-sm text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+								disabled={!pickedEmbedding}
+								onclick={() => insertEmbedding('prompt')}>+ Prompt</button
+							>
+							<button
+								type="button"
+								class="text-sm text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+								disabled={!pickedEmbedding}
+								onclick={() => insertEmbedding('negative_prompt')}>+ Negative</button
+							>
+						</div>
+					{/if}
+				</div>
+				{#if !embeddingDetails.length}
+					<p class={ui.help}>No embeddings installed (Models tab → Embedding).</p>
+				{:else if embeddingsInUse.length}
+					<div class="flex flex-wrap gap-1">
+						{#each embeddingsInUse as used (used.where + used.embedding.name)}
+							<span
+								class="rounded px-2 py-0.5 text-xs {used.embedding.fits === false
+									? 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100'
+									: 'bg-gray-100 dark:bg-gray-700'}"
+								title={used.embedding.fits === false
+									? `Made for ${used.embedding.family_label ?? 'another model family'}: it will be skipped with this model`
+									: used.embedding.name}
+								>{used.embedding.token}
+								<span class="opacity-60"
+									>{used.where === 'prompt' ? 'prompt' : 'negative'}{used.embedding.fits === false
+										? ' · other model family'
+										: ''}</span
+								>
+								<button
+									type="button"
+									class="ml-1 text-red-600"
+									aria-label="Remove {used.embedding.token} from the {used.where === 'prompt'
+										? 'prompt'
+										: 'negative prompt'}"
+									onclick={() =>
+										set(used.where, removeToken($store[used.where], used.embedding.token))}
+									>✕</button
+								></span
+							>
+						{/each}
+					</div>
+				{:else}
+					<p class={ui.help}>
+						Add one to the prompt or the negative prompt, or type its name there as in A1111.
+					</p>
+				{/if}
+			</div>
+
 			<!-- size -->
 			<div>
 				<span class={ui.label}>Size</span>
@@ -588,6 +684,23 @@
 				<summary class="cursor-pointer text-sm text-gray-600 dark:text-gray-300">Advanced</summary>
 				<div class="mt-2 space-y-3">
 					<div>
+						<label for="{mode}_syntax" class={ui.label}>Prompt syntax (SD 1.x/2.x, SDXL)</label>
+						<select
+							id="{mode}_syntax"
+							class={ui.input}
+							value={$store.prompt_syntax ?? 'a1111'}
+							onchange={(e) => set('prompt_syntax', e.currentTarget.value as PromptSyntax)}
+						>
+							<option value="a1111">A1111: weights, long prompts, [from:to:when]</option>
+							<option value="comfy">ComfyUI weights (same syntax)</option>
+							<option value="plain">Plain text (cut at 77 tokens)</option>
+						</select>
+						<p class={ui.help}>
+							(word:1.2) and [word] weigh words, BREAK starts a new 75-token chunk, [cat:dog:0.5]
+							switches halfway, [cat|dog] alternates every step.
+						</p>
+					</div>
+					<div>
 						<label for="{mode}_sigmas" class={ui.label}>Custom sigmas (overrides steps)</label>
 						<textarea
 							id="{mode}_sigmas"
@@ -596,37 +709,6 @@
 							placeholder="e.g. 14.6, 8.4, 5.2, …"
 							bind:value={sigmasText}
 							oninput={() => set('custom_sigmas', parseSigmas(sigmasText))}></textarea>
-					</div>
-					<div>
-						<span class={ui.label}>Textual inversion embeddings</span>
-						<div class="flex flex-wrap items-center gap-1">
-							{#each $store.embeddings ?? [] as name (name)}
-								<span class="rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-700"
-									>{name}
-									<button
-										type="button"
-										class="ml-1 text-red-600"
-										aria-label="Remove {name}"
-										onclick={() =>
-											set(
-												'embeddings',
-												($store.embeddings ?? []).filter((x: string) => x !== name)
-											)}>✕</button
-									></span
-								>
-							{/each}
-							<input
-								class={ui.sized(ui.smallInput, 'w-40')}
-								placeholder="name, Enter to add"
-								bind:value={embeddingInput}
-								onkeydown={(e) => {
-									if (e.key === 'Enter') {
-										e.preventDefault();
-										addEmbedding();
-									}
-								}}
-							/>
-						</div>
 					</div>
 				</div>
 			</details>
