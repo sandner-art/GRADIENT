@@ -72,12 +72,29 @@ def _read_norm(path_or_id: str) -> tuple[tuple, tuple]:
             return _IMAGENET_MEAN, _IMAGENET_STD
 
 
+def _installed_dino() -> list[str]:
+    try:
+        from gradient.model_manager.inventory import list_local_models
+
+        return [
+            m.name
+            for m in list_local_models("vision", with_sizes=False)
+            if (m.family or "").startswith("dino")
+        ]
+    except Exception:
+        return []
+
+
 def load_feature_model(name: str | None = None) -> tuple[FeatureModel, str | None]:
     """Load (and cache) a feature model. Returns (model, note-about-fallback)."""
     candidates = (
         [name]
         if name
-        else [get_setting("lab.feature_model") or DEFAULT_CANDIDATES[0], *DEFAULT_CANDIDATES[1:]]
+        else [
+            get_setting("lab.feature_model") or DEFAULT_CANDIDATES[0],
+            *DEFAULT_CANDIDATES[1:],
+            *_installed_dino(),  # any DINO model in the vision folder
+        ]
     )
     candidates = list(dict.fromkeys(c for c in candidates if c))
     errors = []

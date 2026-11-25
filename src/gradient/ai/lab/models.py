@@ -423,3 +423,85 @@ class EmbedResponse(BaseModel):
     )
     text_embeddings: list[list[float]] | None = None
     note: str | None = None
+
+
+# ----------------------------------------------------------------- style check
+StylePosition = Literal["template", "before", "after", "chunk"]
+
+
+class StyleCheckRequest(BaseModel):
+    base_request: Text2ImageRequest = Field(
+        ..., description="Settings to render (its styles are replaced per variant)"
+    )
+    styles: list[str] = Field(..., min_length=1, max_length=16, description="Style names")
+    positions: list[StylePosition] = Field(
+        default_factory=lambda: ["template"], min_length=1, max_length=4
+    )
+    style_starts: list[Annotated[float, Field(ge=0.0, lt=1.0)]] = Field(
+        default_factory=lambda: [0.0],
+        min_length=1,
+        max_length=4,
+        description="Fractions of the steps from which the styles apply",
+    )
+    num_seeds: int = Field(default=2, ge=1, le=4, description="Seeds (seed, seed+1, ...)")
+    feature_model: str | None = Field(
+        default=None, description="DINO model for style strength (default: DINOv3/DINOv2)"
+    )
+    clip_model: str | None = Field(
+        default=None,
+        description=(
+            "CLIP or SigLIP model for 'content kept' (default: the first one installed in the "
+            "vision folder; 'none' skips it)"
+        ),
+    )
+
+
+class StyleCheckCell(BaseModel):
+    style: str | None  # None: the unstyled image
+    position: str | None = None
+    start: float | None = None
+    seed: int
+    image_base64: str
+    parameters: dict
+
+
+class StyleCheckRow(BaseModel):
+    style: str
+    position: str
+    start: float
+    strength: float = Field(..., description="Mean DINO distance to the unstyled image")
+    strength_rel: float | None = Field(
+        default=None, description="strength / distance between unstyled seeds (1 = a new seed)"
+    )
+    content: float | None = Field(
+        default=None, description="Mean CLIP similarity of the images with the unstyled prompt"
+    )
+    content_rel: float | None = Field(
+        default=None, description="content / the unstyled images' (1 = kept as well)"
+    )
+    consistency: float | None = Field(
+        default=None, description="Mean DINO similarity between the style's images across seeds"
+    )
+    tokens: int | None = None
+    chunks: int | None = None
+    notes: list[str] = Field(default_factory=list)
+    cells: list[int] = Field(default_factory=list, description="Indexes into cells, by seed")
+
+
+class StyleCheckResponse(BaseModel):
+    model_id: str
+    prompt: str
+    seeds: list[int]
+    feature_model: str
+    clip_model: str | None = None
+    seed_distance: float | None = Field(
+        default=None, description="Mean DINO distance between the unstyled images of two seeds"
+    )
+    baseline_content: float | None = None
+    baseline_consistency: float | None = None
+    baseline: list[int] = Field(default_factory=list, description="Unstyled cells, by seed")
+    rows: list[StyleCheckRow]
+    cells: list[StyleCheckCell]
+    image_base64: str = Field(..., description="Contact sheet: unstyled row, then each variant")
+    notes: list[str] = Field(default_factory=list)
+    elapsed_s: float

@@ -20,7 +20,7 @@ export interface LabBase {
 }
 
 export type LabTool =
-	'explore' | 'taylor' | 'modulation' | 'attention' | 'ablation' | 'quantization';
+	'explore' | 'taylor' | 'modulation' | 'attention' | 'ablation' | 'quantization' | 'style';
 
 export const lab = $state<{
 	base: LabBase;

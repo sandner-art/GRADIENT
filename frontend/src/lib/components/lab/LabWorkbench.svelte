@@ -7,6 +7,7 @@
 	import LabProgress from './LabProgress.svelte';
 	import ModulationLanes from './ModulationLanes.svelte';
 	import QuantReport from './QuantReport.svelte';
+	import StyleCheck from './StyleCheck.svelte';
 	import TaylorPreview from './TaylorPreview.svelte';
 	import TokenAblation from './TokenAblation.svelte';
 	import { lab, type LabTool } from '#lib/lab/labState.svelte.js';
@@ -25,7 +26,8 @@
 			id: 'quantization',
 			label: 'Quantization check',
 			hint: 'What loading the model quantized changes'
-		}
+		},
+		{ id: 'style', label: 'Style check', hint: 'Which styles work, and where in the prompt' }
 	];
 </script>
 
@@ -63,5 +65,6 @@
 		<div hidden={lab.tool !== 'attention'}><AttentionTool /></div>
 		<div hidden={lab.tool !== 'ablation'}><TokenAblation /></div>
 		<div hidden={lab.tool !== 'quantization'}><QuantReport /></div>
+		<div hidden={lab.tool !== 'style'}><StyleCheck /></div>
 	</section>
 </div>

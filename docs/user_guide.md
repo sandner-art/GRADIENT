@@ -267,6 +267,18 @@ Removes one word at a time, re-renders with the same seed and measures how far t
 
 API: `POST /api/v1/lab/token-ablation` with `{"base_request": {...}, "mode": "remove_word", "words": null, "max_words": 12, "feature_model": null}`.
 
+### Style check
+Which styles change the image, and does your subject survive them? Pick up to 16 styles, one or more positions (template, before, after, own chunk) and optionally later starts (`0, 0.3`). The Lab's settings render without a style and with each variant, on the same seeds (up to 4), and each variant gets:
+
+- **Strength**: the DINO distance from the unstyled image of the same seed, on a scale where 1 means the style changes the image as much as a new seed would.
+- **Content kept**: how well a CLIP or SigLIP model still finds your (unstyled) prompt in the image, relative to the unstyled images: 1 = as well as without the style, 0.8 = the style pushed part of the subject out. It needs a CLIP model (*CLIP ViT-B/32* in the Models tab, vision).
+- **Consistency**: how alike the style's images are across seeds. A style with a strong signature makes them more alike than the unstyled ones (shown under the table).
+- **Tokens** of the styled prompt and notes: a missing style, LoRA tags not found, a prompt cut at 75 tokens.
+
+The scatter puts strength against content kept: the useful styles sit right (strong) and high (subject kept); dashed lines mark a new seed's change and the unstyled content. Click a dot or a row to see its images next to the unstyled ones. Every image, the contact sheet and the report are saved as a gallery run (*Lab · style check*), so a run on your styles file can be compared later. To see which words of a style do the work, run Token ablation on the styled prompt (*Apply to prompt* in Text-to-Image, then *Send to Lab*).
+
+API: `POST /api/v1/lab/style-check` with `{"base_request": {...}, "styles": [...], "positions": ["template"], "style_starts": [0], "num_seeds": 2, "feature_model": null, "clip_model": null}`.
+
 ## Memory modes
 
 `performance.memory_mode` in `config/config.yaml` (or `GRADIENT_MEMORY_MODE`):

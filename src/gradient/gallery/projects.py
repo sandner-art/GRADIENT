@@ -73,6 +73,7 @@ RUN_TYPE_KEYWORDS = {
     "lab_concept_attention": "Lab ConceptAttention",
     "lab_token_ablation": "Lab ablation",
     "lab_quantization": "Lab quantization",
+    "lab_style_check": "Lab style check",
     "lab_explore_map": "Lab explorer",
     "lab_explore_branches": "Lab explorer",
 }

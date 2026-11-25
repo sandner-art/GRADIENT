@@ -36,11 +36,14 @@ from gradient.ai.lab.models import (
     ExploreTokensResponse,
     QuantReportRequest,
     QuantReportResponse,
+    StyleCheckRequest,
+    StyleCheckResponse,
     TaylorRequest,
     TaylorResponse,
 )
 from gradient.ai.lab.probes import attention_layers
 from gradient.ai.lab.quant_report import quantization_report
+from gradient.ai.lab.style_check import style_check
 from gradient.ai.lab.taylor import taylor_preview
 from gradient.api.job_kinds import label_for, register_lab_kind
 from gradient.core.jobs import PRIORITY_INTERACTIVE, job_queue
@@ -57,6 +60,7 @@ ATTENTION = register_lab_kind("attention", attention_maps, AttentionMapRequest)
 CONCEPTS = register_lab_kind("concept_attention", concept_attention_maps, ConceptAttentionRequest)
 ABLATION = register_lab_kind("token_ablation", token_ablation, AblationRequest)
 QUANTIZATION = register_lab_kind("quantization", quantization_report, QuantReportRequest)
+STYLE_CHECK = register_lab_kind("style_check", style_check, StyleCheckRequest)
 EXPLORE_START = register_lab_kind("explore_start", explore_start, ExploreStartRequest, save=False)
 EXPLORE_MAP = register_lab_kind("explore_map", explore_map, ExploreMapRequest)
 EXPLORE_TOKENS = register_lab_kind(
@@ -109,6 +113,18 @@ async def handle_quantization_report(request: QuantReportRequest = Body(...)):
         return await _run_lab(QUANTIZATION, request, priority=0)
     except Exception as e:
         raise to_http_error(e, "quantization report") from e
+
+
+@router.post(
+    "/lab/style-check",
+    response_model=StyleCheckResponse,
+    summary="Render styles × positions × seeds; score style strength and content kept",
+)
+async def handle_style_check(request: StyleCheckRequest = Body(...)):
+    try:
+        return await _run_lab(STYLE_CHECK, request, priority=0)  # long, like a render
+    except Exception as e:
+        raise to_http_error(e, "style check") from e
 
 
 @router.post(

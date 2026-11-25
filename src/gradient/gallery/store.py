@@ -554,7 +554,7 @@ def make_thumb(source: Path, output_id: int, size: int) -> Path:
 # --------------------------------------------------------------------------- Lab runs
 _MAIN_IMAGE_KEYS = ("image_base64", "base_image_base64")
 #: lists whose items (with image_base64 + parameters) are saved as gallery images
-_GALLERY_LISTS = ("branches",)
+_GALLERY_LISTS = ("branches", "cells")  # explorer branches, style check images
 
 
 def _ext(data: bytes) -> str:
