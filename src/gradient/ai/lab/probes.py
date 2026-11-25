@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 class Probe:
     """Base class: override what you need."""
 
+    #: the probe keeps or compares latents by position (no latent rolling for seamless tiling)
+    needs_fixed_latents: bool = False
+
     #: tensors the probe needs in callback_kwargs (intersected with the pipeline's allowed list)
     tensor_inputs: tuple[str, ...] = ()
     #: the probe reads the pipeline's own prompt encoding (77 tokens): no A1111 syntax encoding

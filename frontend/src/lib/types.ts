@@ -17,6 +17,7 @@ export interface DiffusionTaskBase {
 	styles?: string[] | null;
 	style_position?: 'template' | 'before' | 'after' | 'chunk' | 'blocks';
 	style_start?: number;
+	tiling?: 'none' | 'x' | 'y' | 'xy';
 	height?: number;
 	width?: number;
 	num_inference_steps?: number;

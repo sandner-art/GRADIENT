@@ -120,6 +120,13 @@ class DiffusionTaskBase(BaseModel):
             "and SDXL), so the composition comes from the prompt alone"
         ),
     )
+    tiling: Literal["none", "x", "y", "xy"] = Field(
+        default="none",
+        description=(
+            "Seamless image: 'x' tiles left-right, 'y' top-bottom, 'xy' both (circular padding "
+            "on SD/SDXL, latent rolling on SD3 and FLUX.1)"
+        ),
+    )
     height: int = Field(default=512, gt=0)
     width: int = Field(default=512, gt=0)
     num_inference_steps: int = Field(default=25, gt=0)

@@ -9,6 +9,7 @@
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
 	import StylePicker from './StylePicker.svelte';
 	import TokenView from './TokenView.svelte';
+	import { TILINGS, type Tiling } from '#lib/tiling.js';
 	import type { StylePreview } from '#lib/styles.js';
 	import { addToken, removeToken, usedEmbeddings, type EmbeddingDetail } from '#lib/embeddings.js';
 	import * as ui from '#lib/lab/ui.js';
@@ -219,7 +220,8 @@
 			prompt_syntax: s.prompt_syntax || undefined,
 			styles: s.styles?.length ? s.styles : null,
 			style_position: s.styles?.length ? (s.style_position ?? 'template') : undefined,
-			style_start: s.styles?.length ? (s.style_start ?? 0) : undefined
+			style_start: s.styles?.length ? (s.style_start ?? 0) : undefined,
+			tiling: s.tiling && s.tiling !== 'none' ? s.tiling : undefined
 		};
 		if (mode === 'image') {
 			base.image_base64 = s.image_base64;
@@ -600,6 +602,20 @@
 						{/each}
 					</div>
 				</div>
+				<label class="mt-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+					>Tiling
+					<select
+						class={ui.sized(ui.smallInput, 'w-52')}
+						aria-label="Seamless tiling"
+						value={$store.tiling ?? 'none'}
+						onchange={(e) => set('tiling', e.currentTarget.value as Tiling)}
+					>
+						{#each TILINGS as t (t.value)}<option value={t.value}>{t.label}</option>{/each}
+					</select>
+					{#if ($store.tiling ?? 'none') !== 'none'}<span class={ui.help}
+							>Check the seams in the preview's Tile view.</span
+						>{/if}
+				</label>
 			</div>
 
 			<!-- sampling -->

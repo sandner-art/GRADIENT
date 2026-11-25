@@ -148,6 +148,7 @@ class TrajectoryRecorder(Probe):
     """Keeps the latents after every step (per image of the batch) and their noise level."""
 
     tensor_inputs = ("latents",)
+    needs_fixed_latents = True
 
     def __init__(self) -> None:
         self.latents: list[list[torch.Tensor]] = []
@@ -176,6 +177,7 @@ class RegionLock(Probe):
     """After each step, copy everything outside the region from a recorded trajectory."""
 
     tensor_inputs = ("latents",)
+    needs_fixed_latents = True
 
     def __init__(self, reference: list[torch.Tensor], start: int, mask: torch.Tensor) -> None:
         self.reference = reference

@@ -67,7 +67,8 @@ const REQUEST_KEYS = [
 	'prompt_syntax',
 	'styles',
 	'style_position',
-	'style_start'
+	'style_start',
+	'tiling'
 ] as const;
 
 /** A render request from an image's saved parameters (null-safe, constant guidance). */

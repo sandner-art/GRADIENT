@@ -334,6 +334,12 @@ def generate_images(
         )
     if syntax_probe is not None:
         all_probes.append(syntax_probe)
+    if request.tiling != "none":
+        from .tiling import TilingProbe
+
+        # probes that keep latents by position (the Explorer) need them where they are
+        fixed = any(getattr(p, "needs_fixed_latents", False) for p in all_probes)
+        all_probes.append(TilingProbe(request.tiling, base_seed, roll=False if fixed else None))
     elif (count := prompt_syntax.token_count(pipe, prompt)) and count > 75:
         params["prompt_truncated"] = True  # the pipeline reads only the first 75 tokens
         if plain_needed and request.prompt_syntax != "plain":

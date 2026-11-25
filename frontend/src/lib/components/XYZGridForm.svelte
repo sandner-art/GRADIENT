@@ -66,7 +66,8 @@
 		'prompt_syntax', // a1111, comfy, plain: how weights and long prompts are read
 		'styles', // style names; 'none' for no style, 'A + B' for two
 		'style_position', // template, before, after, chunk
-		'style_start' // 0, 0.3, 0.6: add the styles from that fraction of the steps
+		'style_start', // 0, 0.3, 0.6: add the styles from that fraction of the steps
+		'tiling' // none, xy, x, y: seamless or not
 		// TODO: Add 'strength' if allowing Img2Img base params? Needs careful handling.
 		// TODO: Add LoRA weights, ControlNet weights, VAE etc. later
 	];

@@ -120,7 +120,8 @@ const COPY_KEYS = [
 	'prompt_syntax',
 	'styles',
 	'style_position',
-	'style_start'
+	'style_start',
+	'tiling'
 ] as const;
 
 /** Settings of a generation, ready for a form store (seed optional). */

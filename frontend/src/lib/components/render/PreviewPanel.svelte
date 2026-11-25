@@ -4,6 +4,7 @@
      images of the newest finished job). The strip below lists this form's jobs. -->
 <script lang="ts">
 	import ExplorePane from './ExplorePane.svelte';
+	import TilePane from './TilePane.svelte';
 	import RecentRenders from './RecentRenders.svelte';
 	import { imageUrl, previewUrl, thumbUrl } from '#lib/gallery/api.js';
 	import { imageMenu, jobMenu } from '#lib/gallery/menus.js';
@@ -14,7 +15,7 @@
 
 	let { form }: { form: 'text' | 'image' } = $props();
 
-	type Mode = 'live' | 'compare' | 'batch' | 'explore';
+	type Mode = 'live' | 'compare' | 'batch' | 'explore' | 'tile';
 	let mode = $state<Mode>('live');
 	/** picked image (null: follow the newest) */
 	let picked = $state<number | null>(null);
@@ -88,7 +89,7 @@
 	<div class="{ui.card} !p-3">
 		<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 			<div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Preview mode">
-				{#each [['live', running ? '● Live' : 'Result'], ['compare', 'Compare'], ['batch', 'Batch'], ['explore', 'Explore']] as [id, label], i (id)}
+				{#each [['live', running ? '● Live' : 'Result'], ['compare', 'Compare'], ['batch', 'Batch'], ['explore', 'Explore'], ['tile', 'Tile']] as [id, label], i (id)}
 					<button
 						type="button"
 						class="border border-gray-300 px-3 py-1 text-sm dark:border-gray-600"
@@ -118,6 +119,8 @@
 
 		{#if mode === 'explore'}
 			<ExplorePane {form} id={shown} />
+		{:else if mode === 'tile'}
+			<div class="h-[min(70vh,40rem)]"><TilePane id={shown} /></div>
 		{:else}
 			<div
 				class="relative flex min-h-80 items-center justify-center overflow-auto rounded bg-gray-100 dark:bg-gray-900"

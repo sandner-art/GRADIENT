@@ -2,6 +2,10 @@
 
 ## 0.10.0 (unreleased)
 
+### Textures
+- **Seamless images**: *Tiling* under the size (request field `tiling`: `x`, `y` or `xy`) renders images whose left edge continues the right one and/or the top the bottom. SD 1.x/2.x and SDXL wrap every padded convolution of the UNet and the VAE around (circular padding): the whole render becomes a torus, exactly. SD3 and FLUX.1 shift the latent by a new random offset after every step and back after the last (latent rolling), so the seam is denoised like any other region; their VAE decoder wraps too. Images record `tiling_applied` and `tiling_method`; an XYZ axis `tiling` compares.
+- **Tile view** in the preview panel (*Tile*): the image repeated 3 × 3 or shifted by half (the edges meet in the middle, like Photoshop's Offset), with a seam score per axis (the colour jump across the wrap edge against the steps next to it; 1 = no seam). It works on any image, so it also checks textures made elsewhere.
+
 ### Memory
 - **Freeing VRAM covers everything**: `POST /system/unload` used to free only the image models; the DINO and CLIP/SigLIP models loaded for metrics (`/lab/embed`, ablation, Explorer, quantization check) stayed in VRAM. It now frees image models, vision models and LLMs (after the running GPU job), and takes `targets` (`diffusion`, `vision`, `llm`, `caches`) to free one kind. The answer lists what was freed and the free VRAM before and after. Vision models are tracked like the others, so `GET /system/info` lists them too.
 - **Memory** button in the header: VRAM in use, the loaded models by kind with their size, **Free VRAM**, *Unload* per kind and *Clear caches* (Explorer paths, word vocabularies, tokenizers). `GET /system/memory` gives the same report.
