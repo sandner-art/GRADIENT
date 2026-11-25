@@ -14,6 +14,7 @@
 	import ImageViewer from '#lib/components/gallery/ImageViewer.svelte';
 	import LabWorkbench from '#lib/components/lab/LabWorkbench.svelte';
 	import QueuePanel from '#lib/components/queue/QueuePanel.svelte';
+	import MemoryButton from '#lib/components/MemoryButton.svelte';
 	import StopButton from '#lib/components/StopButton.svelte';
 	import PreviewPanel from '#lib/components/render/PreviewPanel.svelte';
 	import RenderForm from '#lib/components/render/RenderForm.svelte';
@@ -173,6 +174,7 @@
 			<p class="text-sm text-gray-500 dark:text-gray-400">{deviceLabel}</p>
 		{/if}
 		<QueuePanel />
+		<MemoryButton />
 		<StopButton />
 	</div>
 </section>

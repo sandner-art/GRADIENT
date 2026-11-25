@@ -10,7 +10,6 @@
 		POSITIONS,
 		groupStyles,
 		needsPreview,
-		tokenSummary,
 		type PromptStyle,
 		type StylePosition,
 		type StylePreview,
@@ -138,8 +137,6 @@
 	}
 
 	const missing = $derived(selected.filter((n) => list && !byName.has(n)));
-	const promptTokens = $derived(tokenSummary(preview?.tokens?.prompt, plain));
-	const negativeTokens = $derived(tokenSummary(preview?.tokens?.negative_prompt, plain));
 	const startPercent = $derived(Math.round(($store.style_start ?? 0) * 100));
 	function title(style: PromptStyle | undefined): string {
 		if (!style) return 'Not in the styles folder';
@@ -261,9 +258,7 @@
 					onclick={() => (showPreview = !showPreview)}
 					>{showPreview ? 'Hide' : 'Show'} the prompt as rendered</button
 				>
-				{#if promptTokens}<span class="text-gray-500 dark:text-gray-400"
-						>Prompt: {promptTokens}</span
-					>{/if}
+
 				{#if selected.length}
 					<button
 						type="button"
@@ -280,7 +275,7 @@
 					<p class="break-words whitespace-pre-wrap">{preview.prompt}</p>
 					{#if preview.negative_prompt}
 						<p class="mt-1 break-words whitespace-pre-wrap text-gray-500 dark:text-gray-400">
-							Negative{negativeTokens ? ` (${negativeTokens})` : ''}: {preview.negative_prompt}
+							Negative: {preview.negative_prompt}
 						</p>
 					{/if}
 					{#if preview.loras.length}

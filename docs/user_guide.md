@@ -105,6 +105,8 @@ CLIP reads 75 tokens at a time. Without chunking (and in diffusers) everything a
 
 *Advanced → Prompt syntax* chooses how weights are applied: **A1111** scales a token's embedding and then restores the chunk's average (the default), **ComfyUI weights** scales the token's difference from the empty prompt instead (weights act more gently and more linearly), and **Plain text** sends the text as it is (cut at 77 tokens, as before 0.10). The XYZ grid has a `prompt_syntax` axis to compare them. Prompts without any of this syntax, of up to 75 tokens, render exactly as before. Other model families (FLUX, SD 3.5, Qwen-Image…) get the text as it is: their T5 or LLM encoders read long prompts by themselves.
 
+**Tokens** under the styles shows, as you type, how many tokens the model reads and in how many chunks (*Tokens: 92 · 2 chunks*); with *Plain text* it says how many are cut off. *Show tokens* lists the tokens of each chunk: a word can be several tokens, weights show as colour and a small number, embeddings in amber, cut-off tokens struck through. It runs the model's tokenizer only, so it is instant and needs no loaded model. How much each word actually *does* in the image is a different question: Lab → Attention maps (one render) and Token ablation (one render per word) answer it.
+
 The image's settings record what was used: `prompt_tokens` and `prompt_chunks`, `prompt_weights_applied`, and `prompt_schedule` (the prompt at each step where it changes). `prompt_truncated` marks a prompt that was cut. *Use settings* and the Explorer render images saved before 0.10 with plain text, as they were made. Attention maps, token ablation and the Explorer's word attention map words to token positions, so they always read the prompt as plain text.
 
 ### Styles
@@ -277,7 +279,9 @@ API: `POST /api/v1/lab/token-ablation` with `{"base_request": {...}, "mode": "re
 | `minimal` | sequential CPU offload | slowest |
 | `auto` (default) | chosen from model size and free VRAM | |
 
-Large models (FLUX, Qwen-Image) need plenty of **system RAM** when offloaded (roughly the model's download size). `performance.max_cached_pipelines` (default 1) controls how many models stay loaded; *POST /api/v1/system/unload* frees everything.
+Large models (FLUX, Qwen-Image) need plenty of **system RAM** when offloaded (roughly the model's download size). `performance.max_cached_pipelines` (default 1) controls how many models stay loaded.
+
+**Freeing VRAM.** The **Memory** button in the header shows the VRAM in use and what is loaded: image models, the vision models used for metrics (DINO, CLIP or SigLIP: the Lab's measurements, ArtAgents' scoring through `/lab/embed`) and LLMs, each with its size. **Free VRAM** unloads all of them; *Unload* next to a kind frees only that one, and *Clear caches* drops the Explorer's paths and other caches (memory, not VRAM). A running job finishes first. Models load again when a render or the Lab needs them, so the only cost is the next load. From a script: `POST /api/v1/system/unload` (all) or with `{"targets": ["vision"]}`.
 
 ## Troubleshooting
 

@@ -107,6 +107,7 @@ def load_feature_model(name: str | None = None) -> tuple[FeatureModel, str | Non
         patch = int(getattr(model.config, "patch_size", 16))
         fm = FeatureModel(candidate, model, patch, mean, std)
         _cache[candidate] = fm
+        track_vision_model(candidate, model, lambda n=candidate: unload_feature_models([n]))
         return fm, (f"Using {candidate}: " + "; ".join(errors)) if errors else None
     raise ValueError(
         "No vision feature model available. Download 'DINOv2 small' (or DINOv3, gated) in the Models tab. "
@@ -121,3 +122,50 @@ def distances(fm: FeatureModel, a: Image.Image, b: Image.Image) -> tuple[float, 
     global_d = float(1 - (ca * cb).sum())
     patch_d = (1 - (pa * pb).sum(-1)).clamp(min=0).cpu().numpy()
     return global_d, patch_d
+
+
+# --------------------------------------------------------------------------- memory
+def model_mb(model: torch.nn.Module) -> int:
+    size = sum(t.numel() * t.element_size() for t in model.parameters())
+    size += sum(t.numel() * t.element_size() for t in model.buffers())
+    return int(size / 1024**2)
+
+
+def track_vision_model(name: str, model: torch.nn.Module, drop) -> None:
+    """Register a vision model with the resource manager (shown in /system/memory; unloaded
+    with the others). `drop` removes it from its cache (blocking, run on the GPU queue)."""
+    from gradient.core.resource_manager import resource_manager
+
+    async def unload() -> None:
+        from gradient.core.scheduling import run_gpu_task
+
+        await run_gpu_task(drop)
+
+    resource_manager.register(f"vision:{name}", "vision", model_mb(model), unload=unload)
+
+
+def free_memory() -> None:
+    import gc
+
+    from gradient.core.device import empty_cache
+
+    gc.collect()
+    empty_cache()
+
+
+def loaded_feature_models() -> list[dict]:
+    return [{"name": n, "vram_mb": model_mb(fm.model)} for n, fm in _cache.items()]
+
+
+def unload_feature_models(names: list[str] | None = None) -> list[str]:
+    """Drop DINO feature models (all, or `names`) and free their memory. Blocking."""
+    from gradient.core.resource_manager import resource_manager
+
+    dropped = [n for n in (names if names is not None else list(_cache)) if n in _cache]
+    for name in dropped:
+        _cache.pop(name, None)
+        resource_manager.release(f"vision:{name}")
+    if dropped:
+        free_memory()
+        logger.info("Unloaded feature models: %s", ", ".join(dropped))
+    return dropped

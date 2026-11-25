@@ -34,8 +34,10 @@ import json
 import logging
 import math
 import time
+import weakref
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import torch
@@ -834,7 +836,8 @@ def _map_summary(points, window, suggested, error, correlation, n) -> str:
 
 
 # ---- word suggestions
-_vocab_cache: dict[int, tuple[list[str], torch.Tensor]] = {}
+# keyed by id(text encoder); the weak reference tells a new encoder that reuses an id apart
+_vocab_cache: dict[int, tuple[Any, list[str], torch.Tensor]] = {}
 
 
 def _vocabulary(pipe):
@@ -842,8 +845,9 @@ def _vocabulary(pipe):
     if tok is None or enc is None or not hasattr(enc, "get_input_embeddings"):
         return None
     key = id(enc)
-    if key in _vocab_cache:
-        return _vocab_cache[key]
+    cached = _vocab_cache.get(key)
+    if cached is not None and cached[0]() is enc:
+        return cached[1], cached[2]
     weight = enc.get_input_embeddings().weight
     words: dict[str, int] = {}
     for piece, index in tok.get_vocab().items():
@@ -864,8 +868,14 @@ def _vocabulary(pipe):
     with torch.no_grad():
         rows = weight[torch.tensor(list(words.values()), device=weight.device)].float()
         matrix = F.normalize(rows, dim=-1).cpu().half()
-    _vocab_cache[key] = (names, matrix)
+    _vocab_cache[key] = (weakref.ref(enc), names, matrix)
     return names, matrix
+
+
+def clear_vocabularies() -> int:
+    count = len(_vocab_cache)
+    _vocab_cache.clear()
+    return count
 
 
 def vocabulary_alternatives(pipe, word: str, count: int, exclude: set[str]) -> list[str]:

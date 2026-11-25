@@ -6,7 +6,8 @@ import logging
 from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from gradient.ai.diffusion import loading
 from gradient.core import shutdown
@@ -195,9 +196,130 @@ async def stop_gradient(request: Request, by: Literal["web", "cli"] = "web"):
     return {"stopping": True}
 
 
+MEMORY_TARGETS = ("diffusion", "vision", "llm", "caches")
+
+
+def _vram() -> dict | None:
+    """Free / total VRAM of the device and what PyTorch holds (CUDA only), in GB."""
+    import torch
+
+    from gradient.core.device import get_device
+
+    device = get_device()
+    if device.type != "cuda":
+        return None
+    idx = device.index or 0
+    free, total = torch.cuda.mem_get_info(idx)
+    gb = 1024**3
+    return {
+        "total_gb": round(total / gb, 2),
+        "free_gb": round(free / gb, 2),
+        "allocated_gb": round(torch.cuda.memory_allocated(idx) / gb, 2),
+        "reserved_gb": round(torch.cuda.memory_reserved(idx) / gb, 2),
+    }
+
+
+def _memory_report() -> dict:
+    from gradient.ai.diffusion import prompt_syntax
+    from gradient.ai.lab import embed, explorer, features
+    from gradient.ai.llm.loading import loaded_llms
+
+    tracked = {r["id"]: r["vram_mb"] for r in resource_manager.snapshot()}
+    diffusion = [
+        {
+            "key": key,
+            "name": entry.model_id,
+            "detail": ", ".join(
+                x
+                for x in (
+                    entry.family,
+                    entry.quantization if entry.quantization not in (None, "none") else None,
+                    entry.memory_mode,
+                )
+                if x
+            ),
+            "vram_mb": tracked.get(key),
+        }
+        for key, entry in loading.loaded_pipelines.items()
+    ]
+    return {
+        "device": str(device_summary().get("device")),
+        "vram": _vram(),
+        "loaded": {
+            "diffusion": diffusion,
+            "vision": [{**m, "detail": "metrics (DINO)"} for m in features.loaded_feature_models()]
+            + [{**m, "detail": "metrics (CLIP/SigLIP)"} for m in embed.loaded_clip_models()],
+            "llm": [{"name": k, "vram_mb": tracked.get(k)} for k in loaded_llms],
+        },
+        "caches": {
+            "explorer_paths": len(explorer._cache),
+            "word_vocabularies": len(explorer._vocab_cache),
+            "prompt_tokenizers": len(prompt_syntax._tokenizers),
+        },
+    }
+
+
+@router.get("/system/memory", tags=["System Info"])
+async def memory():
+    """What is loaded (image models, vision models for metrics, LLMs) and the VRAM in use."""
+    return await asyncio.to_thread(_memory_report)
+
+
+class UnloadRequest(BaseModel):
+    targets: list[Literal["diffusion", "vision", "llm", "caches"]] | None = Field(
+        default=None,
+        description=(
+            "What to free: diffusion (image models), vision (DINO/CLIP/SigLIP models used for "
+            "metrics), llm, caches (Explorer paths, word vocabularies, tokenizers; RAM only). "
+            "Default: diffusion, vision and llm"
+        ),
+    )
+
+
 @router.post("/system/unload", tags=["System Info"])
-async def unload_models():
-    """Unload all cached diffusion pipelines and free VRAM."""
+async def unload_models(body: UnloadRequest | None = Body(default=None)):
+    """Unload models and free VRAM: image models, vision models and LLMs by default.
+
+    Waits for the running GPU job, so nothing is unloaded under a render. `unloaded` counts
+    the image models (as before); `freed` lists everything by kind.
+    """
+    from gradient.ai.lab import embed, explorer, features
+
+    targets = set(body.targets if body and body.targets else ("diffusion", "vision", "llm"))
+    before = _vram()
+    freed: dict[str, list[str] | dict] = {}
     count = len(loading.loaded_pipelines)
-    await run_gpu_task(loading.unload_all_pipelines)
-    return {"unloaded": count}
+    if "diffusion" in targets:
+        freed["diffusion"] = sorted({e.model_id for e in loading.loaded_pipelines.values()})
+        await run_gpu_task(loading.unload_all_pipelines)
+        explorer.clear_vocabularies()  # built from the unloaded text encoders
+    if "vision" in targets:
+
+        def drop_vision() -> list[str]:
+            return features.unload_feature_models() + embed.unload_clip_models()
+
+        freed["vision"] = await run_gpu_task(drop_vision)
+    if "llm" in targets:
+        from gradient.ai.llm.loading import loaded_llms, unload_llm
+
+        freed["llm"] = list(loaded_llms)
+        for key in list(loaded_llms):
+            await unload_llm(key)
+    if "caches" in targets:
+        from gradient.ai.diffusion import prompt_syntax
+
+        freed["caches"] = {
+            "explorer_paths": len(explorer._cache),
+            "word_vocabularies": explorer.clear_vocabularies(),
+            "prompt_tokenizers": len(prompt_syntax._tokenizers),
+        }
+        explorer.clear_cache()
+        prompt_syntax._tokenizers.clear()
+    await run_gpu_task(features.free_memory)
+    after = _vram()
+    return {
+        "unloaded": count if "diffusion" in targets else 0,
+        "freed": freed,
+        "vram_before": before,
+        "vram_after": after,
+    }

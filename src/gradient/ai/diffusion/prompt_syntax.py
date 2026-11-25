@@ -208,9 +208,11 @@ def schedule(text: str, total: int) -> list[tuple[int, str]]:
 
 # --------------------------------------------------------------------------- tokens and chunks
 def _token_ids(pipe, tokenizer, text: str) -> list[int]:
-    convert = getattr(pipe, "maybe_convert_prompt", None) if pipe is not None else None
-    if callable(convert):  # multi-vector embeddings: "tok" -> "tok tok_1 tok_2"
-        text = convert(text, tokenizer)
+    # multi-vector embeddings: "tok" -> "tok tok_1 tok_2" (as the pipelines do; needs no pipeline)
+    if tokenizer.added_tokens_encoder:
+        from diffusers.loaders.textual_inversion import TextualInversionLoaderMixin
+
+        text = TextualInversionLoaderMixin._maybe_convert_prompt(None, text, tokenizer)
     return list(tokenizer(text, add_special_tokens=False, truncation=False).input_ids)
 
 
@@ -508,8 +510,8 @@ def preview_tokenizer(model_id: str):
         tokenizer = None
         try:
             source = resolve_model_source(model_id)
-            folder = Path(source.path) / "tokenizer"
-            if not source.single_file and folder.is_dir():
+            folder = Path(source.load_path) / "tokenizer"
+            if source.local and not source.single_file and folder.is_dir():
                 tokenizer = CLIPTokenizer.from_pretrained(str(folder))
         except Exception:
             tokenizer = None
@@ -539,3 +541,70 @@ def count_tokens(model_id: str, text: str) -> dict[str, Any] | None:
         "chunks": len(chunks),
         "limit": size,
     }
+
+
+def token_view(model_id: str, text: str, syntax: str = "a1111") -> dict[str, Any] | None:
+    """The tokens a CLIP model reads, chunk by chunk, with their weights (instant: the
+    tokenizer only, no model). `plain` shows what is cut off after 75 tokens. Prompt editing
+    is shown as the prompt reads at the end of the render. None for models without CLIP."""
+    pipe, tokenizer = preview_tokenizer(model_id)
+    if tokenizer is None:
+        return None
+    final = prompt_at_step(text, 10**6, 1) if syntax != "plain" else text
+    tokenizer, final = _with_embeddings(tokenizer, final)
+    size = tokenizer.model_max_length - 2
+    added = set(tokenizer.added_tokens_encoder.values())
+    if syntax == "plain":
+        tokens = [(t, 1.0) for t in _token_ids(pipe, tokenizer, final)]
+        chunks, dropped = [tokens[:size]], tokens[size:]
+    else:
+        comma = tokenizer(",", add_special_tokens=False).input_ids
+        weighted = _weighted_tokens(pipe, tokenizer, parse_weights(final))
+        chunks = chunk_tokens(weighted, size, comma[0] if len(comma) == 1 else None)
+        dropped = []
+
+    def piece(token: int, weight: float) -> dict[str, Any]:
+        word = tokenizer.convert_ids_to_tokens(token) or ""
+        end = word.endswith("</w>")
+        shown = word if token in added else tokenizer.decode([token]).strip()  # byte-level BPE
+        return {"t": shown or word, "w": round(float(weight), 3), "end": end, "emb": token in added}
+
+    return {
+        "tokens": sum(len(c) for c in chunks) + len(dropped),
+        "limit": size,
+        "chunks": [[piece(t, w) for t, w in chunk] for chunk in chunks],
+        "dropped": [piece(t, w) for t, w in dropped],
+        "edited": final != text,
+    }
+
+
+_emb_tokenizers: dict[tuple, Any] = {}
+
+
+def _with_embeddings(tokenizer, text: str):
+    """(tokenizer, text) where installed embeddings named in the text count as their vectors,
+    also before they are loaded: a copy of the tokenizer gets their tokens, as loading would."""
+    import copy
+
+    from .loading_embeddings import (
+        embedding_info,
+        embeddings_in_prompts,
+        installed_embeddings,
+        normalize_prompt,
+    )
+
+    text = normalize_prompt(text) or ""
+    missing = []
+    for name in embeddings_in_prompts([text], installed_embeddings()):
+        info = embedding_info(name)
+        if info.token not in tokenizer.added_tokens_encoder and not info.error:
+            missing.append((info.token, max(1, info.vectors)))
+    if not missing:
+        return tokenizer, text
+    key = (id(tokenizer), tuple(sorted(missing)))
+    if key not in _emb_tokenizers:
+        copied = copy.deepcopy(tokenizer)
+        copied.add_tokens([t if i == 0 else f"{t}_{i}" for t, n in missing for i in range(n)])
+        _emb_tokenizers.clear()  # keep one copy
+        _emb_tokenizers[key] = copied
+    return _emb_tokenizers[key], text

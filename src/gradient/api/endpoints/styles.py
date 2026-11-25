@@ -88,3 +88,26 @@ async def preview(body: StylePreviewRequest = Body(...)):
         }
 
     return await asyncio.to_thread(run)
+
+
+class TokenViewRequest(BaseModel):
+    model_id: str
+    prompt: str = ""
+    negative_prompt: str | None = ""
+    prompt_syntax: Literal["a1111", "comfy", "plain"] = "a1111"
+
+
+@router.post("/prompt/tokens", summary="The tokens an SD/SDXL model reads, by chunk, with weights")
+async def prompt_tokens(body: TokenViewRequest = Body(...)):
+    """Instant (the model's tokenizer only). `prompt` / `negative_prompt` are null for models
+    without CLIP text encoders, which read long prompts by themselves."""
+
+    def run():
+        return {
+            "prompt": prompt_syntax.token_view(body.model_id, body.prompt, body.prompt_syntax),
+            "negative_prompt": prompt_syntax.token_view(
+                body.model_id, body.negative_prompt or "", body.prompt_syntax
+            ),
+        }
+
+    return await asyncio.to_thread(run)

@@ -152,3 +152,44 @@ def test_lab_tools_keep_plain_prompts(tiny_sd):
     lanes = [ModulationLane(type="prompt", prompt="a cat", start=0.5, end=1.0)]
     assert ModulationController(lanes, req).needs_plain_prompt
     assert not ModulationController([], req).needs_plain_prompt
+
+
+def test_token_view_is_instant_and_shows_chunks(client, tiny_sd, tiny_flux):
+    body = {"model_id": tiny_sd, "prompt": "a (b:1.5) BREAK c", "negative_prompt": "x"}
+    r = client.post("/api/v1/prompt/tokens", json=body).json()
+    chunks = r["prompt"]["chunks"]
+    assert [[(p["t"], p["w"]) for p in c] for c in chunks] == [
+        [("a", 1.0), ("b", 1.5)],
+        [("c", 1.0)],
+    ]
+    assert r["prompt"]["tokens"] == 3 and r["prompt"]["limit"] == 75
+    assert r["negative_prompt"]["tokens"] == 1
+    plain = client.post(
+        "/api/v1/prompt/tokens", json={**body, "prompt": "x" * 80, "prompt_syntax": "plain"}
+    ).json()["prompt"]
+    assert len(plain["chunks"][0]) == 75 and len(plain["dropped"]) == plain["tokens"] - 75
+    edited = client.post("/api/v1/prompt/tokens", json={**body, "prompt": "a [b:c:0.5]"}).json()
+    assert edited["prompt"]["edited"] is True  # shown as it reads at the end
+    flux = client.post("/api/v1/prompt/tokens", json={**body, "model_id": tiny_flux}).json()
+    assert flux == {"prompt": None, "negative_prompt": None}
+
+
+def test_token_view_counts_embeddings_before_they_load(client, tiny_sd, workspace):
+    import torch
+    from safetensors.torch import save_file
+
+    from gradient.ai.diffusion.loading import unload_all_pipelines
+
+    unload_all_pipelines()  # the tokenizer comes from the model folder, without embeddings
+    folder = workspace / "models" / "embeddings"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "threevec.safetensors"
+    save_file({"emb_params": torch.randn(3, 16)}, str(path))
+    try:
+        body = {"model_id": tiny_sd, "prompt": "a threevec", "negative_prompt": ""}
+        view = client.post("/api/v1/prompt/tokens", json=body).json()["prompt"]
+        pieces = view["chunks"][0]
+        assert view["tokens"] == 4  # 'a' + three vectors
+        assert [p["emb"] for p in pieces] == [False, True, True, True]
+    finally:
+        path.unlink(missing_ok=True)

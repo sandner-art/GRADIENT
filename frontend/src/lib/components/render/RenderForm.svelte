@@ -8,6 +8,7 @@
 	import QuantizationSelect from '#lib/components/shared/QuantizationSelect.svelte';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
 	import StylePicker from './StylePicker.svelte';
+	import TokenView from './TokenView.svelte';
 	import type { StylePreview } from '#lib/styles.js';
 	import { addToken, removeToken, usedEmbeddings, type EmbeddingDetail } from '#lib/embeddings.js';
 	import * as ui from '#lib/lab/ui.js';
@@ -418,6 +419,14 @@
 			</div>
 
 			<StylePicker {store} bind:preview={stylePreview} />
+
+			<TokenView
+				modelId={$store.model_id}
+				prompt={stylePreview ? stylePreview.prompt : $store.prompt}
+				negative={stylePreview ? stylePreview.negative_prompt : $store.negative_prompt}
+				syntax={$store.prompt_syntax}
+				styled={!!stylePreview && !!$store.styles?.length}
+			/>
 
 			<!-- LoRAs -->
 			<div>

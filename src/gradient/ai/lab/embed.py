@@ -25,7 +25,7 @@ from PIL import Image
 from gradient.core.device import get_device
 from gradient.model_manager.inventory import find_model_path
 
-from .features import load_feature_model
+from .features import free_memory, load_feature_model, model_mb, track_vision_model
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,26 @@ def load_clip(name: str) -> ClipEmbedder:
     except Exception as e:
         raise ValueError(f"Could not load {name}: {str(e).splitlines()[0][:200]}") from e
     _cache[name] = ClipEmbedder(name, model, processor)
+    track_vision_model(name, model, lambda: unload_clip_models([name]))
     return _cache[name]
+
+
+def loaded_clip_models() -> list[dict]:
+    return [{"name": n, "vram_mb": model_mb(e.model)} for n, e in _cache.items()]
+
+
+def unload_clip_models(names: list[str] | None = None) -> list[str]:
+    """Drop CLIP/SigLIP models (all, or `names`) and free their memory. Blocking."""
+    from gradient.core.resource_manager import resource_manager
+
+    dropped = [n for n in (names if names is not None else list(_cache)) if n in _cache]
+    for name in dropped:
+        _cache.pop(name, None)
+        resource_manager.release(f"vision:{name}")
+    if dropped:
+        free_memory()
+        logger.info("Unloaded CLIP models: %s", ", ".join(dropped))
+    return dropped
 
 
 def decode_image(data: str) -> Image.Image:
