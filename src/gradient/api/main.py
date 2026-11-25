@@ -26,6 +26,7 @@ from .endpoints import presets as presets_endpoints
 from .endpoints import projects as projects_endpoints
 from .endpoints import queue as queue_endpoints
 from .endpoints import status as status_endpoints
+from .endpoints import styles as styles_endpoints
 from .endpoints import sweeps as sweeps_endpoints
 from .endpoints import system as system_endpoints
 from .endpoints import visualize as visualize_endpoints
@@ -85,6 +86,7 @@ app.include_router(queue_endpoints.router, prefix="/api/v1", tags=["Queue"])
 app.include_router(history_endpoints.router, prefix="/api/v1", tags=["Gallery"])
 app.include_router(projects_endpoints.router, prefix="/api/v1", tags=["Projects"])
 app.include_router(sweeps_endpoints.router, prefix="/api/v1", tags=["Test sweeps"])
+app.include_router(styles_endpoints.router, prefix="/api/v1", tags=["Styles"])
 app.include_router(websocket_endpoints.router, tags=["WebSocket"])
 
 

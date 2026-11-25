@@ -37,8 +37,9 @@ def _clean(value: Any) -> str:
 
 def a1111_parameters(params: dict[str, Any]) -> str:
     """A1111-compatible `parameters` text for a generation's parameter dict."""
-    lines = [_clean(params.get("prompt") or "")]
-    negative = params.get("negative_prompt")
+    # the prompts as rendered (styles applied), as A1111 writes them
+    lines = [_clean(params.get("styled_prompt") or params.get("prompt") or "")]
+    negative = params.get("styled_negative_prompt") or params.get("negative_prompt")
     if negative:
         lines.append(f"Negative prompt: {_clean(negative)}")
     fields: list[tuple[str, Any]] = [
@@ -52,7 +53,7 @@ def a1111_parameters(params: dict[str, Any]) -> str:
     fields.append(("Model", params.get("model_id")))
     if params.get("vae_id"):
         fields.append(("VAE", params["vae_id"]))
-    loras = params.get("loras") or []
+    loras = params.get("loras_used") or params.get("loras") or []
     if loras:
         fields.append(
             (

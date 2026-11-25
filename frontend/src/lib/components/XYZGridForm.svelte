@@ -63,7 +63,10 @@
 		'scheduler_id',
 		'model_id',
 		'quantization', // e.g. none, torchao-int8, bnb-4bit: compare precision side by side
-		'prompt_syntax' // a1111, comfy, plain: how weights and long prompts are read
+		'prompt_syntax', // a1111, comfy, plain: how weights and long prompts are read
+		'styles', // style names; 'none' for no style, 'A + B' for two
+		'style_position', // template, before, after, chunk
+		'style_start' // 0, 0.3, 0.6: add the styles from that fraction of the steps
 		// TODO: Add 'strength' if allowing Img2Img base params? Needs careful handling.
 		// TODO: Add LoRA weights, ControlNet weights, VAE etc. later
 	];
@@ -106,7 +109,7 @@
 					if (['width', 'height'].includes(paramType) && (num <= 0 || num % 8 !== 0))
 						throw new Error(`Invalid ${paramType} (must be positive multiple of 8): ${val}`);
 					return num;
-				} else if (['guidance_scale'].includes(paramType)) {
+				} else if (['guidance_scale', 'style_start'].includes(paramType)) {
 					// TODO: Add 'strength' check here later (0-1 range)
 					const num = parseFloat(val);
 					if (isNaN(num)) throw new Error(`Invalid float for ${paramType}: ${val}`);

@@ -14,6 +14,9 @@ export interface DiffusionTaskBase {
 	prompt: string;
 	negative_prompt?: string | null; // Allow null
 	prompt_syntax?: PromptSyntax;
+	styles?: string[] | null;
+	style_position?: 'template' | 'before' | 'after' | 'chunk';
+	style_start?: number;
 	height?: number;
 	width?: number;
 	num_inference_steps?: number;

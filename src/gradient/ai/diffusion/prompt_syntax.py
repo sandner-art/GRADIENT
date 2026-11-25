@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -207,7 +208,7 @@ def schedule(text: str, total: int) -> list[tuple[int, str]]:
 
 # --------------------------------------------------------------------------- tokens and chunks
 def _token_ids(pipe, tokenizer, text: str) -> list[int]:
-    convert = getattr(pipe, "maybe_convert_prompt", None)
+    convert = getattr(pipe, "maybe_convert_prompt", None) if pipe is not None else None
     if callable(convert):  # multi-vector embeddings: "tok" -> "tok tok_1 tok_2"
         text = convert(text, tokenizer)
     return list(tokenizer(text, add_special_tokens=False, truncation=False).input_ids)
@@ -484,3 +485,57 @@ class PromptSyntaxProbe(Probe):
             if len(self.neg) > 1:
                 out["negative_prompt_schedule"] = [[s, t] for s, t in self.neg]
         return out
+
+
+# --------------------------------------------------------------------------- previews
+_tokenizers: dict[str, Any] = {}
+
+
+def preview_tokenizer(model_id: str):
+    """(pipeline or None, CLIP tokenizer or None) to count a model's prompt tokens without
+    loading it: the loaded pipeline, else the model folder's tokenizer, else the CLIP
+    tokenizer in the Hugging Face cache (single-file SD/SDXL checkpoints use that one)."""
+    from .loading import loaded_pipelines, model_profile, resolve_model_source
+
+    for entry in loaded_pipelines.values():
+        if entry.model_id == model_id and clip_encoders(entry.pipeline):
+            return entry.pipeline, clip_encoders(entry.pipeline)[0][1]
+    if model_profile(model_id)[0] not in ("sd15", "sdxl"):
+        return None, None
+    if model_id not in _tokenizers:
+        from transformers import CLIPTokenizer
+
+        tokenizer = None
+        try:
+            source = resolve_model_source(model_id)
+            folder = Path(source.path) / "tokenizer"
+            if not source.single_file and folder.is_dir():
+                tokenizer = CLIPTokenizer.from_pretrained(str(folder))
+        except Exception:
+            tokenizer = None
+        if tokenizer is None:
+            try:
+                tokenizer = CLIPTokenizer.from_pretrained(
+                    "openai/clip-vit-large-patch14", local_files_only=True
+                )
+            except Exception:
+                tokenizer = None
+        _tokenizers[model_id] = tokenizer
+    return None, _tokenizers[model_id]
+
+
+def count_tokens(model_id: str, text: str) -> dict[str, Any] | None:
+    """{tokens, chunks, limit} of a prompt for a CLIP model, or None when not countable."""
+    pipe, tokenizer = preview_tokenizer(model_id)
+    if tokenizer is None:
+        return None
+    runs = parse_weights(prompt_at_step(text, 10**6, 1))  # the prompt as it ends
+    tokens = _weighted_tokens(pipe, tokenizer, runs)
+    comma = tokenizer(",", add_special_tokens=False).input_ids
+    size = tokenizer.model_max_length - 2
+    chunks = chunk_tokens(tokens, size, comma[0] if len(comma) == 1 else None)
+    return {
+        "tokens": sum(1 for t in tokens if t is not None),
+        "chunks": len(chunks),
+        "limit": size,
+    }

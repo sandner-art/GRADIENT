@@ -64,7 +64,10 @@ const REQUEST_KEYS = [
 	'embeddings',
 	'vae_id',
 	'quantization',
-	'prompt_syntax'
+	'prompt_syntax',
+	'styles',
+	'style_position',
+	'style_start'
 ] as const;
 
 /** A render request from an image's saved parameters (null-safe, constant guidance). */

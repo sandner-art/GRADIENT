@@ -28,6 +28,8 @@ paths:
   # Project folders exported from the gallery (for Kurator, ArtAgents, digiKam ...).
   # null: <data>/projects
   projects: null
+  # Prompt styles (A1111 styles.csv, JSON). null: <data>/styles
+  styles: null
   models:
     # Base search directories, in priority order. The FIRST entry is also where
     # the built-in model downloader stores new models.

@@ -117,7 +117,10 @@ const COPY_KEYS = [
 	'embeddings',
 	'vae_id',
 	'quantization',
-	'prompt_syntax'
+	'prompt_syntax',
+	'styles',
+	'style_position',
+	'style_start'
 ] as const;
 
 /** Settings of a generation, ready for a form store (seed optional). */

@@ -7,6 +7,8 @@
 	import { get } from '#lib/apiClient.js';
 	import QuantizationSelect from '#lib/components/shared/QuantizationSelect.svelte';
 	import RecommendedSettings from '#lib/components/shared/RecommendedSettings.svelte';
+	import StylePicker from './StylePicker.svelte';
+	import type { StylePreview } from '#lib/styles.js';
 	import { addToken, removeToken, usedEmbeddings, type EmbeddingDetail } from '#lib/embeddings.js';
 	import * as ui from '#lib/lab/ui.js';
 	import { rememberFormJobs, submitJob } from '#lib/stores/queue.svelte.js';
@@ -42,6 +44,7 @@
 	let showAdvanced = $state(false);
 	let embeddingDetails = $state<EmbeddingDetail[]>([]);
 	let pickedEmbedding = $state('');
+	let stylePreview = $state<StylePreview | null>(null);
 	let sigmasText = $state('');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
@@ -212,7 +215,10 @@
 			embeddings: s.embeddings?.length ? s.embeddings : null,
 			vae_id: s.vae_id || null,
 			quantization: s.quantization || null,
-			prompt_syntax: s.prompt_syntax || undefined
+			prompt_syntax: s.prompt_syntax || undefined,
+			styles: s.styles?.length ? s.styles : null,
+			style_position: s.styles?.length ? (s.style_position ?? 'template') : undefined,
+			style_start: s.styles?.length ? (s.style_start ?? 0) : undefined
 		};
 		if (mode === 'image') {
 			base.image_base64 = s.image_base64;
@@ -241,9 +247,12 @@
 	/** The form's settings into the Lab (first prompt line; the Lab renders one image). */
 	function toLab() {
 		const s = $store;
+		// the Lab has no styles: it gets the prompts as they would be rendered
+		const styled = s.styles?.length && stylePreview;
 		sendToLab({
 			...s,
-			prompt: (prompts[0] ?? s.prompt ?? '').trim(),
+			prompt: styled ? stylePreview!.prompt : (prompts[0] ?? s.prompt ?? '').trim(),
+			negative_prompt: styled ? (stylePreview!.negative_prompt ?? '') : s.negative_prompt,
 			loras: loras.filter((l) => l.name),
 			custom_sigmas: parseSigmas(sigmasText)
 		});
@@ -407,6 +416,8 @@
 					oninput={(e) => set('negative_prompt', e.currentTarget.value)}
 					onkeydown={onKey}></textarea>
 			</div>
+
+			<StylePicker {store} bind:preview={stylePreview} />
 
 			<!-- LoRAs -->
 			<div>

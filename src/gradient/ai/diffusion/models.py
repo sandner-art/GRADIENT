@@ -87,6 +87,30 @@ class DiffusionTaskBase(BaseModel):
             "families always get the text as it is."
         ),
     )
+    styles: list[str] | None = Field(
+        default=None,
+        description=(
+            "Prompt styles by name (GET /styles), applied in order: A1111 styles.csv, where "
+            "{prompt} in a style marks the place of the prompt"
+        ),
+    )
+    style_position: Literal["template", "before", "after", "chunk"] = Field(
+        default="template",
+        description=(
+            "Where the styles' text goes: 'template' (A1111: into {prompt}, else after the "
+            "prompt), 'before' or 'after' the prompt, or 'chunk' (after it, in its own "
+            "75-token chunk via BREAK on SD 1.x/2.x and SDXL)"
+        ),
+    )
+    style_start: float = Field(
+        default=0.0,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Add the styles only from this fraction of the steps (prompt editing; SD 1.x/2.x "
+            "and SDXL), so the composition comes from the prompt alone"
+        ),
+    )
     height: int = Field(default=512, gt=0)
     width: int = Field(default=512, gt=0)
     num_inference_steps: int = Field(default=25, gt=0)
@@ -139,6 +163,15 @@ class DiffusionTaskBase(BaseModel):
         default=None,
         description="Structural modulation lanes applied during denoising (see docs/user_guide.md)",
     )
+
+    @field_validator("styles", mode="before")
+    @classmethod
+    def _styles_list(cls, v):
+        """A single name (e.g. an XYZ axis value) is a list of one; 'none' or '' is no style."""
+        if isinstance(v, str):
+            names = [n.strip() for n in v.split(" + ")]
+            return [n for n in names if n and n.lower() != "none"]
+        return v
 
     # Validation for height/width multiples of 8
     @field_validator("height", "width")

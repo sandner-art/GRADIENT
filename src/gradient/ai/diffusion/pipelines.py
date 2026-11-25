@@ -34,15 +34,21 @@ from gradient.database.models import ExperimentRun, GeneratedOutput
 from gradient.database.session import get_db_session, update_run_status
 from gradient.gallery.metadata import output_fields, png_info
 
-from . import prompt_syntax
+from . import prompt_syntax, styles
 from .guidance import is_constant, parse_guidance_schedule
-from .loading import DYNAMIC_CFG_FAMILIES, LoadedPipeline, get_pipeline
-from .loading_embeddings import embeddings_in_prompts, installed_embeddings, normalize_prompt
+from .loading import DYNAMIC_CFG_FAMILIES, LoadedPipeline, get_pipeline, model_profile
+from .loading_embeddings import (
+    clip_encoders,
+    embeddings_in_prompts,
+    installed_embeddings,
+    normalize_prompt,
+)
 from .models import (
     DiffusionTaskBase,
     ImageResult,
     ImageToImageRequest,
     ImageToImageResponse,
+    LoRAParameter,
     Text2ImageRequest,
     Text2ImageResponse,
 )
@@ -144,6 +150,32 @@ def generate_images(
     every step boundary; `call_overrides` replaces pipeline kwargs (e.g. precomputed
     prompt embeddings for token ablation).
     """
+    params: dict[str, Any] = request.model_dump(mode="json", exclude={"image_base64"})
+    base_seed = resolve_seed(request.seed)
+    # styles, {a|b} wildcards and <lora:name:w> tags make the prompts that are rendered
+    original = request
+    clip_syntax = request.prompt_syntax != "plain" and model_profile(request.model_id)[0] in (
+        "sd15",
+        "sdxl",
+    )
+    prepared = styles.prepare(request, base_seed, clip_syntax)
+    params.update(prepared.params)
+    if prepared.params or prepared.loras:
+        explicit = list(request.loras or [])
+        extra = [
+            LoRAParameter(**lo)
+            for lo in prepared.loras
+            if all(lora.name != lo["name"] for lora in explicit)
+        ]
+        request = request.model_copy(
+            update={
+                "prompt": prepared.prompt,
+                "negative_prompt": prepared.negative_prompt,
+                "loras": (explicit + extra) or None,
+            }
+        )
+        if extra:
+            params["loras_used"] = [lora.model_dump(mode="json") for lora in explicit + extra]
     prompt = normalize_prompt(request.prompt) or ""
     negative_prompt = normalize_prompt(request.negative_prompt)
     # embeddings named in either prompt load by themselves, as in A1111
@@ -163,9 +195,20 @@ def generate_images(
         embeddings=embeddings,
         quantization=request.quantization,
     )
+    reads_syntax = original.prompt_syntax != "plain" and bool(clip_encoders(pipe))
+    if reads_syntax != clip_syntax and (original.styles or "{" in original.prompt):
+        # the model family guessed before loading was wrong: style it again for this model
+        again = styles.prepare(original, base_seed, reads_syntax)
+        for key in ("styled_prompt", "styled_negative_prompt", "style_start_applied"):
+            params.pop(key, None)
+        params.update(again.params)
+        request = request.model_copy(
+            update={"prompt": again.prompt, "negative_prompt": again.negative_prompt}
+        )
+        prompt = normalize_prompt(request.prompt) or ""
+        negative_prompt = normalize_prompt(request.negative_prompt)
     call_signature = inspect.signature(pipe.__call__).parameters
     call_params = set(call_signature)
-    params: dict[str, Any] = request.model_dump(mode="json", exclude={"image_base64"})
     params.update(
         pipeline=type(pipe).__name__,
         family=entry.family,
@@ -306,7 +349,6 @@ def generate_images(
         kwargs["callback_on_step_end"] = on_step_end
 
     # Per-image seeds => each image is reproducible from its own logged seed.
-    base_seed = resolve_seed(request.seed)
     seeds = [(base_seed + i) % (2**32) for i in range(num_outputs)]
     exec_device = getattr(pipe, "_execution_device", get_device())
     gen_device = "cpu" if torch.device(exec_device).type == "mps" else exec_device

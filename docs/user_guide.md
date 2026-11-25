@@ -107,6 +107,23 @@ CLIP reads 75 tokens at a time. Without chunking (and in diffusers) everything a
 
 The image's settings record what was used: `prompt_tokens` and `prompt_chunks`, `prompt_weights_applied`, and `prompt_schedule` (the prompt at each step where it changes). `prompt_truncated` marks a prompt that was cut. *Use settings* and the Explorer render images saved before 0.10 with plain text, as they were made. Attention maps, token ablation and the Explorer's word attention map words to token positions, so they always read the prompt as plain text.
 
+### Styles
+
+**Styles** (under the negative prompt) uses A1111 style files: a style is a name, a prompt and a negative prompt, and `{prompt}` in a style's prompt marks where your prompt goes. **Import styles…** copies an A1111/Forge `styles.csv` (or a JSON list of `name`/`prompt`/`negative_prompt`, as the ComfyUI stylers use) into the styles folder, `<data>/styles` (setting `paths.styles`); you can also put files there yourself. A collection to start with: `A1111_Styles/styles.csv` in github.com/sandner-art/ai-research. Styles are grouped by the part of their name before `:` (*CX*, *PX*, *EX*…); *Search* filters by name and by the words in them. Pick several and they apply in order (hover a chip to see its text; *✕* removes it).
+
+*Position* decides where a style's words go:
+
+| Position | Result for `cinematic photo {prompt} . 35mm, film` and *a cat* |
+|---|---|
+| Template (A1111) | `cinematic photo a cat . 35mm, film` (no `{prompt}`: after your prompt) |
+| Before the prompt | `cinematic photo, 35mm, film, a cat` |
+| After the prompt | `a cat, cinematic photo, 35mm, film` |
+| Own chunk | `a cat BREAK cinematic photo, 35mm, film`: on SD/SDXL your words and the style are encoded apart, so the style doesn't push your words out of the first chunk |
+
+*Style from … % of the steps* adds the styles later in the render (prompt editing, SD/SDXL): the first steps settle the composition from your prompt alone, the style then works on light, color and texture. 20–40 % keeps the layout of the unstyled image; 0 % is the usual way.
+
+*Show the prompt as rendered* shows the final prompt and negative prompt and, for SD/SDXL, the token count (`236 tokens · 4 chunks of 75`). **Apply to prompt** writes them into the prompt boxes and clears the styles, so you can edit the result. Style text can use the A1111 syntax above, `{red|blue|green}` options (one is picked by the seed, as with the dynamic prompts extension) and `<lora:name:0.8>` tags, which load that LoRA (also by its name without extension); a tag for a LoRA you don't have is listed as *not found*. Images keep your own prompt and the styles, so *Use settings* restores both; the PNG's A1111 text has the prompt as rendered. To compare styles, use the XYZ grid with a `styles` axis (`none, PX: Analog, CX: Dynamic`, or `A + B` for two together) and `style_position` or `style_start` on another axis, with a fixed seed.
+
 ### Embeddings (textual inversion)
 
 Put embedding files (`.safetensors`, `.pt`, `.bin`) into `models/embeddings` or download them in the Models tab (*Embedding*). Under the LoRAs, **Embeddings** lists them with their model family; pick one and press **+ Prompt** or **+ Negative** (negative embeddings such as *EasyNegative* belong in the negative prompt). That writes the embedding's token, its file name without extension, into the prompt. Typing the name yourself works the same, as in A1111, and so does ComfyUI's `embedding:name`. The chips below show which embeddings the prompts use; *✕* removes one.
