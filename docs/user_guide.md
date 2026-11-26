@@ -133,6 +133,18 @@ The image's settings record what was used: `prompt_tokens` and `prompt_chunks`, 
 
 The preview panel's **Tile** view shows any image repeated 3 × 3, or shifted by half so the edges meet in the middle, with a seam score for each axis: the colour jump across the wrap edge compared with the steps right next to it. Around 1 means no visible seam, up to 2 a faint one, above that a visible seam. Repetition (the same blob every tile) shows best in the 3 × 3 view at a small size. In the Explorer, branches of a seamless SD3/FLUX render keep their latents in place, so they don't roll.
 
+### PBR maps
+
+The preview panel's **Maps** view makes PBR maps of the image shown: **normal** (OpenGL, green up), **height** (16-bit), **ambient occlusion**, **albedo** (the colour with the light taken out), **curvature** (white = creases, black = ridges) and **glow** (lights in their own colour). With a property network it adds **roughness**, **metallic** and the packed textures engines want: *metallic + smoothness* (Unity Built-in and URP), *mask map* (HDRP) and *ORM* (glTF, Unreal, three.js). For Unreal, flip the green channel of the normal map.
+
+The maps come from the Texture Map Generator's network: put `pbr_net_v3.pt` into `models/pbr` (any `pbr_net` checkpoint works; *Auto* picks the newest). Without one, *Classical* derives normals from the de-lit picture and AO, curvature and albedo from the height. Settings:
+
+- **Network normals only** off (the default) is the generator's *Hybrid*: the network's shapes plus the picture's fine detail, integrated in one step so normals and height agree. **Detail** sets how much fine detail goes in.
+- **Seamless**: *As rendered* follows the image's *Tiling*, so maps of a seamless render tile too; set it by hand for textures made elsewhere. Exact when both sides are multiples of 16 px.
+- **Strength** scales the normal map.
+
+The big view shows the **lit preview**: the albedo (or the picture) lit by the normal map, the light following the pointer; *Light* sets its height. Pick a map on the right to see it alone. **Download ZIP** gives the whole set with a `_maps.json` sidecar (the painted light's direction, the packs' channels); the file names match the generator's, so the set drops into Unity next to the texture. Sets are kept in `pbr_maps` in the outputs folder.
+
 ### Embeddings (textual inversion)
 
 Put embedding files (`.safetensors`, `.pt`, `.bin`) into `models/embeddings` or download them in the Models tab (*Embedding*). Under the LoRAs, **Embeddings** lists them with their model family; pick one and press **+ Prompt** or **+ Negative** (negative embeddings such as *EasyNegative* belong in the negative prompt). That writes the embedding's token, its file name without extension, into the prompt. Typing the name yourself works the same, as in A1111, and so does ComfyUI's `embedding:name`. The chips below show which embeddings the prompts use; *✕* removes one.

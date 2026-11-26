@@ -22,6 +22,7 @@ from .endpoints import history as history_endpoints
 from .endpoints import lab as lab_endpoints
 from .endpoints import llm as llm_endpoints
 from .endpoints import models as models_endpoints
+from .endpoints import pbr as pbr_endpoints
 from .endpoints import presets as presets_endpoints
 from .endpoints import projects as projects_endpoints
 from .endpoints import queue as queue_endpoints
@@ -87,6 +88,7 @@ app.include_router(history_endpoints.router, prefix="/api/v1", tags=["Gallery"])
 app.include_router(projects_endpoints.router, prefix="/api/v1", tags=["Projects"])
 app.include_router(sweeps_endpoints.router, prefix="/api/v1", tags=["Test sweeps"])
 app.include_router(styles_endpoints.router, prefix="/api/v1", tags=["Styles"])
+app.include_router(pbr_endpoints.router, prefix="/api/v1", tags=["PBR maps"])
 app.include_router(websocket_endpoints.router, tags=["WebSocket"])
 
 

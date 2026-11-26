@@ -222,6 +222,7 @@ def _vram() -> dict | None:
 def _memory_report() -> dict:
     from gradient.ai.diffusion import prompt_syntax
     from gradient.ai.lab import embed, explorer, features
+    from gradient.ai.pbr import maps as pbr_maps
     from gradient.ai.llm.loading import loaded_llms
 
     tracked = {r["id"]: r["vram_mb"] for r in resource_manager.snapshot()}
@@ -248,7 +249,8 @@ def _memory_report() -> dict:
         "loaded": {
             "diffusion": diffusion,
             "vision": [{**m, "detail": "metrics (DINO)"} for m in features.loaded_feature_models()]
-            + [{**m, "detail": "metrics (CLIP/SigLIP)"} for m in embed.loaded_clip_models()],
+            + [{**m, "detail": "metrics (CLIP/SigLIP)"} for m in embed.loaded_clip_models()]
+            + [{**m, "detail": "PBR maps"} for m in pbr_maps.loaded_net_info()],
             "llm": [{"name": k, "vram_mb": tracked.get(k)} for k in loaded_llms],
         },
         "caches": {
@@ -270,7 +272,8 @@ class UnloadRequest(BaseModel):
         default=None,
         description=(
             "What to free: diffusion (image models), vision (DINO/CLIP/SigLIP models used for "
-            "metrics), llm, caches (Explorer paths, word vocabularies, tokenizers; RAM only). "
+            "metrics, PBR map networks), llm, caches (Explorer paths, word vocabularies, "
+            "tokenizers; RAM only). "
             "Default: diffusion, vision and llm"
         ),
     )
@@ -284,6 +287,7 @@ async def unload_models(body: UnloadRequest | None = Body(default=None)):
     the image models (as before); `freed` lists everything by kind.
     """
     from gradient.ai.lab import embed, explorer, features
+    from gradient.ai.pbr import maps as pbr_maps
 
     targets = set(body.targets if body and body.targets else ("diffusion", "vision", "llm"))
     before = _vram()
@@ -296,7 +300,11 @@ async def unload_models(body: UnloadRequest | None = Body(default=None)):
     if "vision" in targets:
 
         def drop_vision() -> list[str]:
-            return features.unload_feature_models() + embed.unload_clip_models()
+            return (
+                features.unload_feature_models()
+                + embed.unload_clip_models()
+                + pbr_maps.unload_nets()
+            )
 
         freed["vision"] = await run_gpu_task(drop_vision)
     if "llm" in targets:

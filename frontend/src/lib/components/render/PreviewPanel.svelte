@@ -1,9 +1,11 @@
 <!-- frontend/src/lib/components/render/PreviewPanel.svelte -->
 <!-- The big view beside a render form: the running job live (step by step), then its result.
      Modes: Live (follows the newest job), Compare (wipe between two results), Batch (all
-     images of the newest finished job). The strip below lists this form's jobs. -->
+     images of the newest finished job), Explore, Tile (seams) and Maps (PBR maps). The strip
+     below lists this form's jobs. -->
 <script lang="ts">
 	import ExplorePane from './ExplorePane.svelte';
+	import MapsPane from './MapsPane.svelte';
 	import TilePane from './TilePane.svelte';
 	import RecentRenders from './RecentRenders.svelte';
 	import { imageUrl, previewUrl, thumbUrl } from '#lib/gallery/api.js';
@@ -15,7 +17,7 @@
 
 	let { form }: { form: 'text' | 'image' } = $props();
 
-	type Mode = 'live' | 'compare' | 'batch' | 'explore' | 'tile';
+	type Mode = 'live' | 'compare' | 'batch' | 'explore' | 'tile' | 'maps';
 	let mode = $state<Mode>('live');
 	/** picked image (null: follow the newest) */
 	let picked = $state<number | null>(null);
@@ -26,6 +28,14 @@
 
 	const jobs = $derived(formJobs[form].map((id) => queue.jobs[id]).filter(Boolean) as QueueJob[]);
 	const running = $derived(jobs.find((j) => j.status === 'running') ?? null);
+	const modes = $derived([
+		['live', running ? '● Live' : 'Result'],
+		['compare', 'Compare'],
+		['batch', 'Batch'],
+		['explore', 'Explore'],
+		['tile', 'Tile'],
+		['maps', 'Maps']
+	] as [Mode, string][]);
 	const waiting = $derived(jobs.filter((j) => j.status === 'queued'));
 	const allIds = $derived(jobs.flatMap((j) => outputIds(j)));
 	const newestDone = $derived(jobs.find((j) => outputIds(j).length > 0) ?? null);
@@ -89,16 +99,16 @@
 	<div class="{ui.card} !p-3">
 		<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 			<div class="inline-flex rounded-md shadow-sm" role="group" aria-label="Preview mode">
-				{#each [['live', running ? '● Live' : 'Result'], ['compare', 'Compare'], ['batch', 'Batch'], ['explore', 'Explore'], ['tile', 'Tile']] as [id, label], i (id)}
+				{#each modes as [id, label], i (id)}
 					<button
 						type="button"
 						class="border border-gray-300 px-3 py-1 text-sm dark:border-gray-600"
 						class:rounded-l-md={i === 0}
-						class:rounded-r-md={i === 3}
+						class:rounded-r-md={i === modes.length - 1}
 						class:bg-indigo-600={mode === id}
 						class:text-white={mode === id}
 						aria-pressed={mode === id}
-						onclick={() => (mode = id as Mode)}>{label}</button
+						onclick={() => (mode = id)}>{label}</button
 					>
 				{/each}
 			</div>
@@ -121,6 +131,8 @@
 			<ExplorePane {form} id={shown} />
 		{:else if mode === 'tile'}
 			<div class="h-[min(70vh,40rem)]"><TilePane id={shown} /></div>
+		{:else if mode === 'maps'}
+			<div class="h-[min(72vh,44rem)]"><MapsPane id={shown} /></div>
 		{:else}
 			<div
 				class="relative flex min-h-80 items-center justify-center overflow-auto rounded bg-gray-100 dark:bg-gray-900"
